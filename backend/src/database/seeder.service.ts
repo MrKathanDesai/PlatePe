@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from '../auth/entities/user.entity';
 import { Category } from '../products/entities/category.entity';
+import { getSuggestedCategoryStation } from '../products/utils/category-station';
 
 const DEFAULT_USERS = [
   { name: 'Admin',   email: 'admin@platepe.com',   password: 'admin1234',   role: 'Admin'   },
@@ -50,15 +51,53 @@ export class SeederService implements OnApplicationBootstrap {
   }
 
   private async seedCategories() {
-    const count = await this.categoryRepo.count();
-    if (count > 0) return;
+    const existing = await this.categoryRepo.find();
+    const existingByName = new Map(existing.map((category) => [category.name.toLowerCase(), category]));
+    let createdCount = 0;
+    let normalizedCount = 0;
+    const normalizedIds = new Set<string>();
 
-    this.logger.log('Seeding default categories…');
-    for (const c of DEFAULT_CATEGORIES) {
-      await this.categoryRepo.save(
-        this.categoryRepo.create({ name: c.name, station: c.station, sortOrder: c.sortOrder }),
-      );
+    for (const defaults of DEFAULT_CATEGORIES) {
+      const key = defaults.name.toLowerCase();
+      const current = existingByName.get(key);
+
+      if (!current) {
+        await this.categoryRepo.save(
+          this.categoryRepo.create({
+            name: defaults.name,
+            station: defaults.station,
+            sortOrder: defaults.sortOrder,
+          }),
+        );
+        createdCount += 1;
+        continue;
+      }
+
+      const updates: Partial<Category> = {};
+      if (current.station !== defaults.station) updates.station = defaults.station;
+      if (current.sortOrder !== defaults.sortOrder) updates.sortOrder = defaults.sortOrder;
+
+      if (Object.keys(updates).length > 0) {
+        await this.categoryRepo.update(current.id, updates);
+        normalizedCount += 1;
+        normalizedIds.add(current.id);
+      }
     }
-    this.logger.log('Default categories seeded (5 brewbar, 5 kitchen).');
+
+    for (const category of existing) {
+      if (normalizedIds.has(category.id)) continue;
+      const suggestedStation = getSuggestedCategoryStation(category.name);
+      if (!suggestedStation || suggestedStation === category.station) continue;
+
+      await this.categoryRepo.update(category.id, { station: suggestedStation });
+      normalizedCount += 1;
+    }
+
+    if (createdCount > 0) {
+      this.logger.log(`Seeded ${createdCount} default categories.`);
+    }
+    if (normalizedCount > 0) {
+      this.logger.log(`Normalized ${normalizedCount} category station assignments.`);
+    }
   }
 }

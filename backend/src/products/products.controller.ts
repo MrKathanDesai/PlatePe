@@ -12,6 +12,7 @@ import {
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateModifierDto } from './dto/create-modifier.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -32,6 +33,13 @@ export class ProductsController {
   @Get('categories')
   findAllCategories() {
     return this.productsService.findAllCategories();
+  }
+
+  @Patch('categories/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  updateCategory(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
+    return this.productsService.updateCategory(id, dto);
   }
 
   // Modifiers

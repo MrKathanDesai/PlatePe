@@ -51,6 +51,9 @@ export const productsApi = {
   createCategory: (data: { name: string; sortOrder?: number; station?: KDSStation }) =>
     client.post<Category>('/categories', data),
 
+  updateCategory: (id: string, data: Partial<{ name: string; sortOrder: number; station: KDSStation }>) =>
+    client.patch<Category>(`/categories/${id}`, data),
+
   // Modifiers
   getModifiers: () =>
     client.get<Modifier[]>('/modifiers'),

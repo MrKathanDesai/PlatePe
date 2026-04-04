@@ -9,7 +9,9 @@ import { Category } from './entities/category.entity';
 import { Modifier } from './entities/modifier.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateModifierDto } from './dto/create-modifier.dto';
+import { inferCategoryStation } from './utils/category-station';
 
 @Injectable()
 export class ProductsService {
@@ -21,12 +23,23 @@ export class ProductsService {
 
   // --- Categories ---
   async createCategory(dto: CreateCategoryDto) {
-    const cat = this.categoryRepo.create(dto);
+    const cat = this.categoryRepo.create({
+      ...dto,
+      station: dto.station ?? inferCategoryStation(dto.name),
+    });
     return this.categoryRepo.save(cat);
   }
 
   async findAllCategories() {
     return this.categoryRepo.find({ order: { sortOrder: 'ASC', name: 'ASC' } });
+  }
+
+  async updateCategory(id: string, dto: UpdateCategoryDto) {
+    const category = await this.categoryRepo.findOne({ where: { id } });
+    if (!category) throw new NotFoundException('Category not found');
+
+    await this.categoryRepo.update(id, dto);
+    return this.categoryRepo.findOneByOrFail({ id });
   }
 
   // --- Modifiers ---

@@ -379,6 +379,7 @@ export default function ProductsTab() {
   const [newCatName, setNewCatName] = useState('');
   const [newCatStation, setNewCatStation] = useState<'KITCHEN' | 'BREWBAR'>('KITCHEN');
   const [addingCat, setAddingCat] = useState(false);
+  const [updatingCategoryId, setUpdatingCategoryId] = useState<string | null>(null);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
   const [newModName, setNewModName] = useState('');
   const [newModPrice, setNewModPrice] = useState('');
@@ -404,6 +405,12 @@ export default function ProductsTab() {
   const filteredProducts = products
     .filter((p) => p.isActive)
     .filter((p) => filterCat === 'all' || p.categoryId === filterCat);
+
+  const categoryProductCount = new Map<string, number>();
+  products.filter((product) => product.isActive).forEach((product) => {
+    if (!product.categoryId) return;
+    categoryProductCount.set(product.categoryId, (categoryProductCount.get(product.categoryId) ?? 0) + 1);
+  });
 
   const handleSave = async (form: ProductForm) => {
     if (!form.name || !form.price) { showToast('Name and price are required'); return; }
@@ -449,6 +456,20 @@ export default function ProductsTab() {
     finally { setAddingCat(false); }
   };
 
+  const updateCategoryStation = async (category: Category, station: 'KITCHEN' | 'BREWBAR') => {
+    if (category.station === station) return;
+    setUpdatingCategoryId(category.id);
+    try {
+      await productsApi.updateCategory(category.id, { station });
+      await refreshProducts();
+      showToast(`${category.name} now routes to ${station === 'BREWBAR' ? 'Brewbar' : 'Kitchen'}`);
+    } catch {
+      showToast('Failed to update category station');
+    } finally {
+      setUpdatingCategoryId(null);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 920 }}>
       {/* Categories */}
@@ -456,14 +477,44 @@ export default function ProductsTab() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: 0 }}>Categories</h2>
         </div>
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
+        <p style={{ fontSize: 12, color: 'var(--text-3)', margin: '0 0 12px' }}>
+          Beverage categories should route to Brewbar KDS. Food categories should route to Kitchen KDS.
+        </p>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
           {categories.filter((c) => c.isActive).map((c) => (
-            <span key={c.id} className="badge badge-muted" style={{ fontSize: 12, padding: '4px 10px' }}>
-              {c.name}
-              <span style={{ marginLeft: 4, opacity: 0.6, fontSize: 10 }}>
-                {c.station === 'BREWBAR' ? '☕' : '🍳'}
-              </span>
-            </span>
+            <div
+              key={c.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '10px 12px',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                background: 'var(--surface-2)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                  <span>{c.station === 'BREWBAR' ? '☕' : '🍳'}</span>
+                  <span>{c.name}</span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+                  {categoryProductCount.get(c.id) ?? 0} active {(categoryProductCount.get(c.id) ?? 0) === 1 ? 'product' : 'products'}
+                </div>
+              </div>
+              <select
+                className="input"
+                value={c.station}
+                onChange={(e) => updateCategoryStation(c, e.target.value as 'KITCHEN' | 'BREWBAR')}
+                disabled={updatingCategoryId === c.id}
+                style={{ maxWidth: 160 }}
+              >
+                <option value="KITCHEN">Kitchen KDS</option>
+                <option value="BREWBAR">Brewbar KDS</option>
+              </select>
+            </div>
           ))}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
