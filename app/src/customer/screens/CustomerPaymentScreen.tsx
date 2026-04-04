@@ -1,81 +1,130 @@
-import { useState, useEffect } from 'react';
-import { customerApi } from '../api/customerApi';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Banknote,
+  CheckCircle,
+  ChevronLeft,
+  CreditCard,
+  Smartphone,
+} from 'lucide-react';
+import { customerApi, type CustomerPaymentMethod } from '../api/customerApi';
 import { useCustomer } from '../CustomerContext';
+import {
+  buildUpiIntentUrl,
+  generateUpiQrDataUrl,
+  getUpiConfig,
+} from '../../utils/upi';
 
-// Razorpay types
-declare global {
-  interface Window {
-    Razorpay: new (options: Record<string, unknown>) => { open(): void };
-  }
-}
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (window.Razorpay) { resolve(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
+const METHOD_OPTIONS: Array<{
+  method: CustomerPaymentMethod;
+  label: string;
+  description: string;
+  icon: typeof Banknote;
+}> = [
+  {
+    method: 'UPI',
+    label: 'UPI',
+    description: 'Scan the QR or open your preferred UPI app.',
+    icon: Smartphone,
+  },
+  {
+    method: 'DIGITAL',
+    label: 'Credit Card',
+    description: 'Use the card terminal, then confirm here.',
+    icon: CreditCard,
+  },
+  {
+    method: 'CASH',
+    label: 'Cash',
+    description: 'Pay in cash and record it once collected.',
+    icon: Banknote,
+  },
+];
 
 export default function CustomerPaymentScreen() {
-  const { orderId, orderNumber, orderTotal, setScreen, setOrderStatus, clearCart, customer, tableNumber } = useCustomer();
+  const {
+    orderId,
+    orderNumber,
+    orderTotal,
+    setScreen,
+    setOrderStatus,
+    clearCart,
+    tableNumber,
+  } = useCustomer();
+  const [method, setMethod] = useState<CustomerPaymentMethod>('UPI');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [scriptReady, setScriptReady] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [upiRef, setUpiRef] = useState('');
+  const [upiQrDataUrl, setUpiQrDataUrl] = useState<string | null>(null);
+  const [upiQrError, setUpiQrError] = useState('');
+
+  const upiConfig = useMemo(() => getUpiConfig(), []);
+  const upiIntentUrl = useMemo(() => {
+    if (!orderNumber) return null;
+    return buildUpiIntentUrl(
+      {
+        amount: Number(orderTotal ?? 0),
+        orderNumber,
+        tableNumber,
+      },
+      upiConfig,
+    );
+  }, [orderNumber, orderTotal, tableNumber, upiConfig]);
+  const upiConfigMissing = !upiConfig.vpa || !upiConfig.payeeName;
+  const confirmButtonLabel = method === 'UPI'
+    ? `Mark UPI Paid · ₹${Number(orderTotal ?? 0).toFixed(2)}`
+    : method === 'DIGITAL'
+      ? `Confirm Card Payment · ₹${Number(orderTotal ?? 0).toFixed(2)}`
+      : `Confirm Cash Payment · ₹${Number(orderTotal ?? 0).toFixed(2)}`;
 
   useEffect(() => {
-    loadRazorpayScript().then(setScriptReady);
-  }, []);
+    let cancelled = false;
+
+    if (method !== 'UPI' || !upiIntentUrl) {
+      setUpiQrDataUrl(null);
+      setUpiQrError('');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setUpiQrError('');
+    generateUpiQrDataUrl(upiIntentUrl)
+      .then((dataUrl) => {
+        if (!cancelled) setUpiQrDataUrl(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUpiQrDataUrl(null);
+          setUpiQrError('Could not generate the UPI QR right now.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [method, upiIntentUrl]);
 
   async function handlePay() {
-    if (!orderId || !scriptReady) return;
+    if (!orderId) return;
+
     setLoading(true);
     setError('');
+
     try {
-      const rzp = await customerApi.createRazorpayOrder(orderId);
+      const result = await customerApi.payOrder({
+        orderId,
+        method,
+        upiRef: method === 'UPI' ? (upiRef.trim() || undefined) : undefined,
+      });
 
-      const options = {
-        key: rzp.keyId,
-        amount: rzp.amount,
-        currency: rzp.currency,
-        name: 'PlatePe',
-        description: `Order ${rzp.orderNumber}`,
-        order_id: rzp.rzpOrderId,
-        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          try {
-            await customerApi.verifyPayment({
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-              orderId: orderId!,
-            });
-            clearCart();
-            setOrderStatus('Paid');
-            setSuccess(true);
-            setTimeout(() => setScreen('status'), 1500);
-          } catch (e: any) {
-            setError(e.message ?? 'Payment verification failed');
-          }
-        },
-        prefill: {
-          contact: customer?.phone ? `+91${customer.phone}` : '',
-          name: customer?.name ?? '',
-        },
-        theme: { color: '#C4622D' },
-        modal: {
-          ondismiss: () => setLoading(false),
-        },
-      };
-
-      const rzpInstance = new window.Razorpay(options);
-      rzpInstance.open();
-      setLoading(false);
+      clearCart();
+      setOrderStatus(result.orderStatus);
+      setSuccess(true);
+      setTimeout(() => setScreen('status'), 1500);
     } catch (e: any) {
-      setError(e.message ?? 'Failed to initiate payment');
+      setError(e.message ?? 'Payment failed');
+    } finally {
       setLoading(false);
     }
   }
@@ -84,9 +133,11 @@ export default function CustomerPaymentScreen() {
     return (
       <div style={styles.page}>
         <div style={styles.successBox}>
-          <div style={styles.successIcon}>✓</div>
-          <h2 style={styles.successTitle}>Payment Successful!</h2>
-          <p style={styles.successSub}>Thank you! Your payment has been confirmed.</p>
+          <div style={styles.successBadge}>
+            <CheckCircle size={38} color="#276749" />
+          </div>
+          <h2 style={styles.successTitle}>Payment recorded</h2>
+          <p style={styles.successSub}>Your order has been marked as paid.</p>
         </div>
       </div>
     );
@@ -96,15 +147,15 @@ export default function CustomerPaymentScreen() {
     <div style={styles.page}>
       <header style={styles.header}>
         <button style={styles.backBtn} onClick={() => setScreen('status')}>
-          ← Back
+          <ChevronLeft size={16} /> Back
         </button>
         <span style={styles.brand}>PlatePe</span>
-        <span />
+        <span style={styles.headerSpacer} />
       </header>
 
       <div style={styles.content}>
         <div style={styles.card}>
-          <h2 style={styles.heading}>Pay Your Bill</h2>
+          <h2 style={styles.heading}>Settle Bill</h2>
 
           {tableNumber && (
             <div style={styles.tableRow}>
@@ -125,29 +176,125 @@ export default function CustomerPaymentScreen() {
             <span style={styles.totalAmount}>₹{Number(orderTotal ?? 0).toFixed(2)}</span>
           </div>
 
-          <div style={styles.powered}>
-            <span style={{ color: '#A09890', fontSize: 11 }}>Powered by</span>
-            <span style={{ fontWeight: 700, color: '#3395FF', fontSize: 13, marginLeft: 4 }}>Razorpay</span>
+          <div style={styles.methods}>
+            {METHOD_OPTIONS.map(({ method: value, label, description, icon: Icon }) => {
+              const selected = method === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  style={{
+                    ...styles.methodButton,
+                    borderColor: selected ? '#C4622D' : '#EAE4DB',
+                    background: selected ? '#FFF5EE' : '#fff',
+                  }}
+                  onClick={() => setMethod(value)}
+                >
+                  <div style={{
+                    ...styles.methodIconWrap,
+                    background: selected ? '#C4622D' : '#F3EFE8',
+                    color: selected ? '#fff' : '#5C5650',
+                  }}
+                  >
+                    <Icon size={18} />
+                  </div>
+                  <div style={styles.methodCopy}>
+                    <span style={styles.methodLabel}>{label}</span>
+                    <span style={styles.methodDescription}>{description}</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
+
+          {method === 'UPI' && (
+            <div style={styles.methodPanel}>
+              <div style={styles.upiPillRow}>
+                {['GPay', 'PhonePe', 'Paytm', 'BHIM'].map((app) => (
+                  <span key={app} style={styles.upiPill}>{app}</span>
+                ))}
+              </div>
+
+              {upiIntentUrl ? (
+                <div style={styles.upiBox}>
+                  {upiQrDataUrl ? (
+                    <img
+                      src={upiQrDataUrl}
+                      alt={`UPI QR for ₹${Number(orderTotal ?? 0).toFixed(2)}`}
+                      style={styles.upiQr}
+                    />
+                  ) : (
+                    <div style={styles.upiQrPlaceholder}>Generating QR…</div>
+                  )}
+
+                  <p style={styles.upiHint}>
+                    Scan the QR or open a UPI app to pay ₹{Number(orderTotal ?? 0).toFixed(2)}.
+                  </p>
+                  <p style={styles.upiMeta}>
+                    VPA: <strong>{upiConfig.vpa}</strong>
+                  </p>
+
+                  <a href={upiIntentUrl} style={styles.upiLink}>
+                    <Smartphone size={14} /> Open in UPI App
+                  </a>
+                </div>
+              ) : (
+                <div style={styles.warningBox}>
+                  Configure `VITE_UPI_VPA` and `VITE_UPI_PAYEE_NAME` to enable a real UPI QR and deep link.
+                </div>
+              )}
+
+              {upiQrError && (
+                <div style={styles.errorBox}>{upiQrError}</div>
+              )}
+
+              <div>
+                <label style={styles.inputLabel}>UPI Ref / UTR (Optional)</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter UPI reference after payment"
+                  value={upiRef}
+                  onChange={(event) => setUpiRef(event.target.value)}
+                />
+              </div>
+
+              {upiConfigMissing && (
+                <p style={styles.methodNote}>
+                  Until the UPI env vars are configured, you can still record the payment manually.
+                </p>
+              )}
+            </div>
+          )}
+
+          {method === 'DIGITAL' && (
+            <div style={styles.methodPanel}>
+              <p style={styles.methodNote}>
+                Run the card on your terminal first, then tap confirm here to mark the order paid.
+              </p>
+            </div>
+          )}
+
+          {method === 'CASH' && (
+            <div style={styles.methodPanel}>
+              <p style={styles.methodNote}>
+                Collect the cash at the table or counter, then confirm below to close the bill.
+              </p>
+            </div>
+          )}
 
           {error && <p style={styles.error}>{error}</p>}
 
-          {!scriptReady && (
-            <p style={{ fontSize: 13, color: '#92580A', textAlign: 'center', margin: '0 0 12px' }}>
-              Loading payment gateway…
-            </p>
-          )}
-
           <button
-            style={{ ...styles.payBtn, opacity: loading || !scriptReady ? 0.65 : 1 }}
+            style={{ ...styles.payBtn, opacity: loading ? 0.65 : 1 }}
             onClick={handlePay}
-            disabled={loading || !scriptReady}
+            disabled={loading}
           >
-            {loading ? 'Opening Checkout…' : `Pay ₹${Number(orderTotal ?? 0).toFixed(2)}`}
+            {loading ? 'Confirming Payment…' : confirmButtonLabel}
           </button>
 
           <p style={styles.secureNote}>
-            🔒 100% secure payment via Razorpay
+            This is the separate bill step. Your order was already sent to the kitchen earlier.
           </p>
         </div>
       </div>
@@ -172,8 +319,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   backBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
     background: 'none',
     border: 'none',
     color: '#C4622D',
@@ -189,12 +340,10 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: '#C4622D',
   },
+  headerSpacer: { width: 44 },
   content: {
     flex: 1,
     padding: '24px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 16,
   },
   card: {
     background: '#fff',
@@ -217,78 +366,228 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 0',
     borderBottom: '1px solid #F3EFE8',
   },
-  tableLabel: { fontSize: 14, color: '#5C5650' },
-  tableVal: { fontSize: 14, fontWeight: 600, color: '#1C1814' },
-  divider: { height: 1, background: '#EAE4DB', margin: '4px 0 16px' },
+  tableLabel: {
+    fontSize: 14,
+    color: '#5C5650',
+  },
+  tableVal: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#1C1814',
+  },
+  divider: {
+    height: 1,
+    background: '#EAE4DB',
+    margin: '4px 0 16px',
+  },
   totalRow: {
     display: 'flex',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    margin: '8px 0 4px',
+    marginBottom: 20,
   },
-  totalLabel: { fontSize: 16, fontWeight: 600, color: '#1C1814' },
+  totalLabel: {
+    fontSize: 14,
+    color: '#5C5650',
+  },
   totalAmount: {
     fontSize: 28,
     fontWeight: 700,
-    color: '#C4622D',
-    fontFamily: "'Fraunces', Georgia, serif",
+    color: '#1C1814',
   },
-  powered: {
+  methods: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  methodButton: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    margin: '4px 0 20px',
+    gap: 12,
+    width: '100%',
+    border: '1px solid #EAE4DB',
+    borderRadius: 16,
+    padding: '14px 16px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+  },
+  methodIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  methodCopy: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+  },
+  methodLabel: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#1C1814',
+  },
+  methodDescription: {
+    fontSize: 12,
+    color: '#5C5650',
+    lineHeight: 1.45,
+  },
+  methodPanel: {
+    marginTop: 16,
+    borderRadius: 16,
+    background: '#FCFAF7',
+    border: '1px solid #F0E8DE',
+    padding: '16px 16px 14px',
+  },
+  methodNote: {
+    margin: 0,
+    fontSize: 13,
+    lineHeight: 1.6,
+    color: '#5C5650',
+  },
+  upiPillRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  upiPill: {
+    borderRadius: 999,
+    padding: '6px 10px',
+    background: '#F3EFE8',
+    color: '#5C5650',
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  upiBox: {
+    textAlign: 'center',
+  },
+  upiQr: {
+    width: 176,
+    height: 176,
+    objectFit: 'contain',
+    margin: '0 auto 12px',
+    borderRadius: 12,
+    border: '1px solid #EAE4DB',
+    background: '#fff',
+    padding: 10,
+    display: 'block',
+  },
+  upiQrPlaceholder: {
+    width: 176,
+    height: 176,
+    margin: '0 auto 12px',
+    borderRadius: 12,
+    border: '1px solid #EAE4DB',
+    background: '#F7F1E9',
+    color: '#8B8278',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 12,
+  },
+  upiHint: {
+    fontSize: 12,
+    color: '#5C5650',
+    margin: '0 0 8px',
+    lineHeight: 1.5,
+  },
+  upiMeta: {
+    fontSize: 11,
+    color: '#5C5650',
+    margin: '0 0 12px',
+  },
+  upiLink: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+    padding: '11px 14px',
+    borderRadius: 12,
+    background: '#FFF3E8',
+    color: '#C4622D',
+    textDecoration: 'none',
+    fontSize: 13,
+    fontWeight: 600,
+    boxSizing: 'border-box',
+    marginBottom: 14,
+  },
+  inputLabel: {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#5C5650',
+    marginBottom: 6,
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+  },
+  warningBox: {
+    background: 'rgba(146,88,10,0.08)',
+    border: '1px solid rgba(146,88,10,0.18)',
+    borderRadius: 12,
+    padding: '12px 14px',
+    fontSize: 12,
+    color: '#92580A',
+    lineHeight: 1.5,
+    marginBottom: 14,
+  },
+  errorBox: {
+    background: 'rgba(184,50,50,0.07)',
+    border: '1px solid rgba(184,50,50,0.18)',
+    borderRadius: 12,
+    padding: '10px 12px',
+    fontSize: 12,
+    color: '#B83232',
+    marginBottom: 12,
+  },
+  error: {
+    color: '#B83232',
+    fontSize: 13,
+    margin: '14px 0 0',
+    textAlign: 'center',
   },
   payBtn: {
     width: '100%',
-    background: '#C4622D',
-    color: '#fff',
+    marginTop: 18,
     border: 'none',
     borderRadius: 14,
-    padding: '16px',
-    fontSize: 16,
+    padding: '16px 18px',
+    background: '#C4622D',
+    color: '#fff',
+    fontSize: 15,
     fontWeight: 700,
     cursor: 'pointer',
-    boxShadow: '0 4px 20px rgba(196,98,45,0.30)',
     fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-    transition: 'transform 0.1s',
   },
   secureNote: {
-    textAlign: 'center',
-    color: '#A09890',
     fontSize: 12,
+    color: '#7A7168',
+    textAlign: 'center',
     margin: '12px 0 0',
-  },
-  error: {
-    background: 'rgba(184,50,50,0.07)',
-    color: '#B83232',
-    borderRadius: 8,
-    padding: '10px 14px',
-    fontSize: 13,
-    marginBottom: 12,
+    lineHeight: 1.5,
   },
   successBox: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    margin: 'auto 16px',
+    background: '#fff',
+    borderRadius: 24,
+    padding: '36px 28px',
     textAlign: 'center',
+    boxShadow: '0 8px 24px rgba(28,24,20,0.08)',
   },
-  successIcon: {
-    width: 80,
-    height: 80,
+  successBadge: {
+    width: 72,
+    height: 72,
     borderRadius: '50%',
-    background: '#276749',
-    color: '#fff',
-    fontSize: 40,
+    background: 'rgba(39,103,73,0.10)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    fontWeight: 700,
-    boxShadow: '0 8px 24px rgba(39,103,73,0.25)',
+    margin: '0 auto 20px',
   },
   successTitle: {
     fontFamily: "'Fraunces', Georgia, serif",
@@ -296,7 +595,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     color: '#1C1814',
     margin: '0 0 8px',
-    letterSpacing: '-0.02em',
   },
-  successSub: { fontSize: 15, color: '#5C5650', lineHeight: 1.5 },
+  successSub: {
+    margin: 0,
+    fontSize: 14,
+    color: '#5C5650',
+    lineHeight: 1.6,
+  },
 };

@@ -49,3 +49,4 @@ food-menu*.csv
 
 # Keep backend env example
 !backend/.env.example
+*firebase-adminsdk*.json

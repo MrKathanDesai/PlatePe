@@ -5,6 +5,17 @@ import { Table, TableStatus } from './entities/table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { Order } from '../orders/entities/order.entity';
 
+const SUPPORTED_TABLE_NUMBERS = Array.from({ length: 10 }, (_, index) => `T${index + 1}`);
+
+function normalizeTableNumber(number: string) {
+  return number.trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function getTableNumberRank(number: string) {
+  const match = /^T([1-9]|10)$/.exec(number);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 @Injectable()
 export class TablesService {
   constructor(
@@ -13,15 +24,46 @@ export class TablesService {
   ) {}
 
   async create(dto: CreateTableDto) {
-    const table = this.tableRepo.create({ seats: 4, ...dto });
+    const number = normalizeTableNumber(dto.number);
+    if (!SUPPORTED_TABLE_NUMBERS.includes(number)) {
+      throw new BadRequestException('Table number must be between T1 and T10');
+    }
+
+    const existing = await this.tableRepo.findOne({ where: { number } });
+    if (existing?.isActive) {
+      throw new BadRequestException(`Table ${number} already exists`);
+    }
+
+    if (existing) {
+      existing.isActive = true;
+      existing.number = number;
+      existing.seats = dto.seats ?? existing.seats ?? 4;
+      existing.floorId = dto.floorId?.trim() || null;
+      existing.status = 'Available';
+      existing.currentBill = null;
+      existing.currentOrderId = null;
+      existing.occupiedSince = null;
+      return this.tableRepo.save(existing);
+    }
+
+    const table = this.tableRepo.create({
+      seats: 4,
+      ...dto,
+      number,
+      floorId: dto.floorId?.trim() || null,
+    });
     return this.tableRepo.save(table);
   }
 
   async findAll() {
-    return this.tableRepo.find({
-      where: { isActive: true },
-      order: { number: 'ASC' },
+    const tables = await this.tableRepo.find({
+      where: {
+        isActive: true,
+        number: In(SUPPORTED_TABLE_NUMBERS),
+      },
     });
+
+    return tables.sort((left, right) => getTableNumberRank(left.number) - getTableNumberRank(right.number));
   }
 
   async findOne(id: string) {

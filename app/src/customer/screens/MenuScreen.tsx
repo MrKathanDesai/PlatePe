@@ -252,6 +252,10 @@ export default function MenuScreen() {
               </div>
             </div>
 
+            <p style={styles.billNote}>
+              Place the order now and settle the bill later from the bill section.
+            </p>
+
             <button
               style={{ ...styles.confirmBtn, opacity: placingOrder ? 0.6 : 1 }}
               onClick={placeOrder}
@@ -539,6 +543,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: 14,
+    color: '#5C5650',
+  },
+  billNote: {
+    margin: '14px 0 0',
+    fontSize: 12,
+    lineHeight: 1.5,
     color: '#5C5650',
   },
 };

@@ -2,6 +2,8 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api';
 
+export type CustomerPaymentMethod = 'CASH' | 'DIGITAL' | 'UPI';
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem('customer_token');
   const res = await fetch(`${BASE}${path}`, {
@@ -55,7 +57,7 @@ export interface CustomerOrder {
 
 export const customerApi = {
   verifyFirebaseToken: (idToken: string, name?: string) =>
-    request<{ token: string; customer: { id: string; phone: string; name: string | null } }>(
+    request<{ token: string; customer: { id: string; phone: string | null; email: string | null; name: string | null } }>(
       '/customer/auth/verify-firebase',
       { method: 'POST', body: JSON.stringify({ idToken, name }) },
     ),
@@ -63,7 +65,7 @@ export const customerApi = {
   getMenu: () => request<MenuCategory[]>('/customer/menu'),
 
   getTableSession: (tableId: string) =>
-    request<{ table: { id: string; number: number; seats: number; status: string }; sessionId: string | null; sessionActive: boolean }>(
+    request<{ table: { id: string; number: string; seats: number; status: string }; sessionId: string | null; sessionActive: boolean }>(
       `/customer/table/${tableId}`,
     ),
 
@@ -91,19 +93,19 @@ export const customerApi = {
 
   getOrder: (orderId: string) => request<CustomerOrder>(`/customer/orders/${orderId}`),
 
-  createRazorpayOrder: (orderId: string) =>
-    request<{ rzpOrderId: string; amount: number; currency: string; keyId: string; orderNumber: string }>(
-      '/customer/payments/create',
-      { method: 'POST', body: JSON.stringify({ orderId }) },
-    ),
-
-  verifyPayment: (data: {
-    razorpayOrderId: string;
-    razorpayPaymentId: string;
-    razorpaySignature: string;
+  payOrder: (data: {
     orderId: string;
+    method: CustomerPaymentMethod;
+    upiRef?: string;
   }) =>
-    request<{ success: boolean; orderId: string; orderNumber: string }>('/customer/payments/verify', {
+    request<{
+      success: boolean;
+      orderId: string;
+      orderNumber: string;
+      orderStatus: string;
+      paymentId: string;
+      paymentMethod: CustomerPaymentMethod;
+    }>('/customer/payments', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

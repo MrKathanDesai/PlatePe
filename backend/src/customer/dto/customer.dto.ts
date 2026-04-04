@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsNumber, Min, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsNumber, Min, IsArray, ValidateNested, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SendOtpDto {
@@ -64,21 +64,14 @@ export class AddCustomerItemsDto {
   items: CustomerOrderItemDto[];
 }
 
-export class CreateRazorpayOrderDto {
+export class CreateCustomerPaymentDto {
   @IsUUID()
   orderId: string;
-}
 
-export class VerifyRazorpayPaymentDto {
+  @IsIn(['CASH', 'DIGITAL', 'UPI'])
+  method: 'CASH' | 'DIGITAL' | 'UPI';
+
+  @IsOptional()
   @IsString()
-  razorpayOrderId: string;
-
-  @IsString()
-  razorpayPaymentId: string;
-
-  @IsString()
-  razorpaySignature: string;
-
-  @IsUUID()
-  orderId: string;
+  upiRef?: string;
 }

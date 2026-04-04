@@ -6,10 +6,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, QueryFailedError } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import * as crypto from 'crypto';
 import { Customer } from './entities/customer.entity';
 import { FirebaseService } from './firebase.service';
 import { Product } from '../products/entities/product.entity';
@@ -18,8 +16,8 @@ import { Table } from '../tables/entities/table.entity';
 import { Session } from '../sessions/entities/session.entity';
 import { Order } from '../orders/entities/order.entity';
 import { OrderLineItem } from '../orders/entities/order-line-item.entity';
-import { Payment } from '../payments/entities/payment.entity';
-import { KDSGateway } from '../kds/kds.gateway';
+import { PaymentMethod } from '../payments/entities/payment.entity';
+import { PaymentsService } from '../payments/payments.service';
 import { OrdersService } from '../orders/orders.service';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 
@@ -35,46 +33,67 @@ export class CustomerService {
     @InjectRepository(Session) private sessionRepo: Repository<Session>,
     @InjectRepository(Order) private orderRepo: Repository<Order>,
     @InjectRepository(OrderLineItem) private itemRepo: Repository<OrderLineItem>,
-    @InjectRepository(Payment) private paymentRepo: Repository<Payment>,
     private jwtService: JwtService,
-    private configService: ConfigService,
     private dataSource: DataSource,
-    private kdsGateway: KDSGateway,
+    private paymentsService: PaymentsService,
     private ordersService: OrdersService,
     private firebaseService: FirebaseService,
   ) {}
 
-  /** Verify a Firebase Phone Auth ID token → return a customer JWT */
+  /** Verify a Firebase ID token (phone or email) → return a customer JWT */
   async verifyFirebaseToken(idToken: string, name?: string) {
     let decoded: Awaited<ReturnType<FirebaseService['verifyIdToken']>>;
     try {
       decoded = await this.firebaseService.verifyIdToken(idToken);
-    } catch {
+    } catch (e: any) {
+      this.logger.error(`Firebase token verification failed: ${e?.code} — ${e?.message}`);
       throw new UnauthorizedException('Invalid or expired Firebase token');
     }
 
-    const phone = decoded.phone_number;
-    if (!phone) throw new UnauthorizedException('Token does not contain a phone number');
+    // Email sign-in: use email as identifier; Phone sign-in: use phone number
+    const email = decoded.email ?? null;
+    const rawPhone = decoded.phone_number ?? null;
+    const phone = rawPhone ? rawPhone.replace(/^\+91/, '') : null;
 
-    // Normalise to 10-digit Indian number (strip +91)
-    const normalised = phone.replace(/^\+91/, '');
+    if (!email && !phone) {
+      throw new UnauthorizedException('Token contains neither email nor phone number');
+    }
 
-    let customer = await this.customerRepo.findOne({ where: { phone: normalised } });
+    const where = email ? { email } : { phone: phone! };
+
+    // Look up by whichever identifier we have
+    let customer = await this.customerRepo.findOne({ where });
+
     if (!customer) {
-      customer = await this.customerRepo.save(
-        this.customerRepo.create({ phone: normalised, name: name ?? null }),
-      );
-    } else if (name && !customer.name) {
+      try {
+        customer = await this.customerRepo.save(
+          this.customerRepo.create({ phone, email, name: name ?? null }),
+        );
+      } catch (e: any) {
+        const isUniqueViolation =
+          e instanceof QueryFailedError
+          && e.driverError?.code === '23505';
+
+        if (!isUniqueViolation) throw e;
+
+        // Email-link sign-in can be fired twice in quick succession in dev,
+        // so fall back to the row that just won the race.
+        customer = await this.customerRepo.findOne({ where });
+        if (!customer) throw e;
+      }
+    }
+
+    if (name && !customer.name) {
       await this.customerRepo.update(customer.id, { name });
       customer.name = name;
     }
 
     const token = this.jwtService.sign(
-      { sub: customer.id, phone: customer.phone, type: 'customer' },
+      { sub: customer.id, type: 'customer' },
       { expiresIn: '24h' },
     );
 
-    return { token, customer: { id: customer.id, phone: customer.phone, name: customer.name } };
+    return { token, customer: { id: customer.id, phone: customer.phone, email: customer.email, name: customer.name } };
   }
 
   /** Public menu — all active, non-86d products with their categories */
@@ -180,29 +199,51 @@ export class CustomerService {
     productId: string; productName: string; unitPrice: number;
     quantity?: number; modifiers?: { id: string; name: string; price: number }[]; note?: string;
   }[]) {
-    const order = await this.orderRepo.findOne({ where: { id: orderId }, relations: ['items'] });
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'Paid' || order.status === 'Voided') {
-      throw new BadRequestException('Cannot add items to a completed order');
-    }
+    void customerId;
 
-    const lineItems = items.map((item) =>
-      this.itemRepo.create({
-        orderId,
-        productId: item.productId,
-        productName: item.productName,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity ?? 1,
-        modifiers: item.modifiers ?? [],
-        note: item.note ?? undefined,
-        status: 'Pending' as any,
-      }),
-    );
+    let dispatchedTickets: KDSTicket[] = [];
 
-    await this.itemRepo.save(lineItems);
-    await this.recalcOrder(orderId);
+    const updatedOrder = await this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, { where: { id: orderId }, relations: ['items'] });
+      if (!order) throw new NotFoundException('Order not found');
+      if (order.status === 'Paid' || order.status === 'Voided') {
+        throw new BadRequestException('Cannot add items to a completed order');
+      }
 
-    return this.orderRepo.findOne({ where: { id: orderId }, relations: ['items'] });
+      const lineItems = items.map((item) => {
+        const modifiers = item.modifiers ?? [];
+        const modifiersTotal = modifiers.reduce((sum, modifier) => sum + Number(modifier.price), 0);
+
+        return manager.create(OrderLineItem, {
+          orderId,
+          productId: item.productId,
+          productName: item.productName,
+          // Keep customer-created line items aligned with POS totals.
+          unitPrice: Number(item.unitPrice) + modifiersTotal,
+          quantity: item.quantity ?? 1,
+          modifiers,
+          note: item.note ?? undefined,
+          status: 'Pending' as any,
+        });
+      });
+
+      await manager.save(OrderLineItem, lineItems);
+
+      const allItems = await manager.find(OrderLineItem, { where: { orderId } });
+      const active = allItems.filter((item) => item.status !== 'Voided');
+      const subtotal = active.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+      const tax = subtotal * 0.05;
+      const total = subtotal + tax;
+
+      await manager.update(Order, orderId, { subtotal, tax, total });
+
+      const dispatch = await this.ordersService.dispatchPendingItemsInTransaction(manager, orderId);
+      dispatchedTickets = dispatch.tickets;
+      return dispatch.order;
+    });
+
+    this.ordersService.emitDispatchTickets(dispatchedTickets);
+    return updatedOrder;
   }
 
   /** Get order with live status */
@@ -212,103 +253,36 @@ export class CustomerService {
     return order;
   }
 
-  /** Create a Razorpay order for payment */
-  async createRazorpayOrder(orderId: string) {
+  async payForOrder(
+    customerId: string,
+    orderId: string,
+    method: PaymentMethod,
+    upiRef?: string,
+  ) {
+    void customerId;
+
     const order = await this.orderRepo.findOne({ where: { id: orderId } });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === 'Paid') throw new BadRequestException('Order already paid');
+    if (order.status === 'Voided') throw new BadRequestException('Order is voided');
 
-    const keyId = this.configService.get('RAZORPAY_KEY_ID');
-    const keySecret = this.configService.get('RAZORPAY_KEY_SECRET');
-
-    if (!keyId || !keySecret) {
-      throw new BadRequestException('Razorpay not configured');
-    }
-
-    const amount = Math.round(Number(order.total) * 100); // paise
-    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-
-    const response = await fetch('https://api.razorpay.com/v1/orders', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount,
-        currency: 'INR',
-        receipt: orderId.slice(0, 40),
-        notes: { orderId, orderNumber: order.orderNumber },
-      }),
+    const payment = await this.paymentsService.createAndConfirmCustomerPayment({
+      orderId,
+      method,
+      upiRef,
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new BadRequestException(`Razorpay error: ${err}`);
-    }
-
-    const rzpOrder = await response.json() as { id: string; amount: number; currency: string };
+    const updatedOrder = await this.orderRepo.findOne({ where: { id: orderId } });
+    if (!updatedOrder) throw new NotFoundException('Order not found after payment');
 
     return {
-      rzpOrderId: rzpOrder.id,
-      amount: rzpOrder.amount,
-      currency: rzpOrder.currency,
-      keyId,
-      orderNumber: order.orderNumber,
+      success: true,
+      orderId,
+      orderNumber: updatedOrder.orderNumber,
+      orderStatus: updatedOrder.status,
+      paymentId: payment.id,
+      paymentMethod: payment.method,
     };
-  }
-
-  /** Verify Razorpay payment signature and mark order as paid */
-  async verifyRazorpayPayment(
-    razorpayOrderId: string,
-    razorpayPaymentId: string,
-    razorpaySignature: string,
-    orderId: string,
-  ) {
-    const keySecret = this.configService.get('RAZORPAY_KEY_SECRET', '');
-
-    const body = `${razorpayOrderId}|${razorpayPaymentId}`;
-    const expectedSignature = crypto
-      .createHmac('sha256', keySecret)
-      .update(body)
-      .digest('hex');
-
-    if (expectedSignature !== razorpaySignature) {
-      throw new UnauthorizedException('Invalid payment signature');
-    }
-
-    const order = await this.orderRepo.findOne({ where: { id: orderId } });
-    if (!order) throw new NotFoundException('Order not found');
-    if (order.status === 'Paid') {
-      return { success: true, orderId, orderNumber: order.orderNumber };
-    }
-
-    let dispatchedTickets: KDSTicket[] = [];
-    let paidOrderTotal: number | null = null;
-
-    await this.dataSource.transaction(async (manager) => {
-      const dispatch = await this.ordersService.dispatchPendingItemsInTransaction(manager, orderId);
-      dispatchedTickets = dispatch.tickets;
-      await manager.update(Order, orderId, { status: 'Paid' });
-
-      await manager.save(Payment, manager.create(Payment, {
-        orderId,
-        method: 'DIGITAL' as any,
-        amount: order.total,
-        status: 'CONFIRMED' as any,
-        upiRef: razorpayPaymentId,
-      }));
-
-      await this.ordersService.syncPaidOrderTableStateInTransaction(manager, orderId);
-      paidOrderTotal = Number(order.total);
-    });
-
-    this.ordersService.emitDispatchTickets(dispatchedTickets);
-    if (paidOrderTotal !== null) {
-      this.kdsGateway.emitOrderPaid({ orderId, total: paidOrderTotal });
-    }
-
-    return { success: true, orderId, orderNumber: order.orderNumber };
   }
 
   private async recalcOrder(orderId: string) {

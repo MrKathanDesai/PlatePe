@@ -7,8 +7,7 @@ import {
   VerifyFirebaseTokenDto,
   CreateCustomerOrderDto,
   AddCustomerItemsDto,
-  CreateRazorpayOrderDto,
-  VerifyRazorpayPaymentDto,
+  CreateCustomerPaymentDto,
 } from './dto/customer.dto';
 
 @Controller('customer')
@@ -57,15 +56,8 @@ export class CustomerController {
   // ─── Payments ─────────────────────────────────────────────────────────────
 
   @UseGuards(AuthGuard('customer-jwt'))
-  @Post('payments/create')
-  createPayment(@Body() dto: CreateRazorpayOrderDto) {
-    return this.customerService.createRazorpayOrder(dto.orderId);
-  }
-
-  @Post('payments/verify')
-  verifyPayment(@Body() dto: VerifyRazorpayPaymentDto) {
-    return this.customerService.verifyRazorpayPayment(
-      dto.razorpayOrderId, dto.razorpayPaymentId, dto.razorpaySignature, dto.orderId,
-    );
+  @Post('payments')
+  createPayment(@Req() req: any, @Body() dto: CreateCustomerPaymentDto) {
+    return this.customerService.payForOrder(req.user.id, dto.orderId, dto.method, dto.upiRef);
   }
 }

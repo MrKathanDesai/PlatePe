@@ -16,8 +16,7 @@ import { Table } from '../tables/entities/table.entity';
 import { Session } from '../sessions/entities/session.entity';
 import { Order } from '../orders/entities/order.entity';
 import { OrderLineItem } from '../orders/entities/order-line-item.entity';
-import { Payment } from '../payments/entities/payment.entity';
-import { KDSModule } from '../kds/kds.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { OrdersModule } from '../orders/orders.module';
 
 @Module({
@@ -30,7 +29,6 @@ import { OrdersModule } from '../orders/orders.module';
       Session,
       Order,
       OrderLineItem,
-      Payment,
     ]),
     PassportModule,
     JwtModule.registerAsync({
@@ -41,7 +39,7 @@ import { OrdersModule } from '../orders/orders.module';
         signOptions: { expiresIn: '24h' },
       }),
     }),
-    KDSModule,
+    PaymentsModule,
     OrdersModule,
   ],
   controllers: [CustomerController],

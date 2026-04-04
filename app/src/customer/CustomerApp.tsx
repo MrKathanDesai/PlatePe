@@ -8,6 +8,21 @@ import OrderStatusScreen from './screens/OrderStatusScreen';
 import CustomerPaymentScreen from './screens/CustomerPaymentScreen';
 import { customerApi } from './api/customerApi';
 
+const handledEmailLinkKeys = new Set<string>();
+
+function getCleanCustomerUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const preservedTable = params.get('table');
+  const nextParams = new URLSearchParams();
+
+  if (preservedTable) {
+    nextParams.set('table', preservedTable);
+  }
+
+  const query = nextParams.toString();
+  return query ? `${window.location.pathname}?${query}` : window.location.pathname;
+}
+
 function CustomerShell({ tableId }: { tableId: string | null }) {
   const { screen, setTable, setScreen, token, setAuth } = useCustomer();
 
@@ -41,7 +56,11 @@ function CustomerShell({ tableId }: { tableId: string | null }) {
       return;
     }
 
-    completeEmailSignIn(savedEmail);
+    const attemptKey = `${savedEmail}::${window.location.href}`;
+    if (handledEmailLinkKeys.has(attemptKey)) return;
+
+    handledEmailLinkKeys.add(attemptKey);
+    void completeEmailSignIn(savedEmail);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -54,8 +73,8 @@ function CustomerShell({ tableId }: { tableId: string | null }) {
       const idToken = await credential.user.getIdToken();
       const res = await customerApi.verifyFirebaseToken(idToken);
       setAuth(res.token, res.customer);
-      // Clean the Firebase query params from the URL
-      window.history.replaceState({}, document.title, window.location.pathname);
+      // Clean Firebase query params but preserve the customer table reference.
+      window.history.replaceState({}, document.title, getCleanCustomerUrl());
       setEmailNeeded('');
     } catch (e: any) {
       console.error('Email link sign-in error:', e.code, e.message);
@@ -134,7 +153,7 @@ function CustomerShell({ tableId }: { tableId: string | null }) {
           <p style={promptStyles.error}>{emailLinkError}</p>
           <button
             style={promptStyles.btn}
-            onClick={() => { setEmailLinkError(''); window.history.replaceState({}, document.title, window.location.pathname); }}
+            onClick={() => { setEmailLinkError(''); window.history.replaceState({}, document.title, getCleanCustomerUrl()); }}
           >
             Back to login
           </button>

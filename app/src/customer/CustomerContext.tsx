@@ -13,13 +13,20 @@ export interface CartItem {
   key: string;
 }
 
+export interface CustomerIdentity {
+  id: string;
+  phone: string | null;
+  email: string | null;
+  name: string | null;
+}
+
 interface CustomerState {
   screen: CustomerScreen;
   tableId: string | null;
-  tableNumber: number | null;
+  tableNumber: string | null;
   sessionActive: boolean;
   token: string | null;
-  customer: { id: string; phone: string; name: string | null } | null;
+  customer: CustomerIdentity | null;
   orderId: string | null;
   orderNumber: string | null;
   orderStatus: string | null;
@@ -27,8 +34,8 @@ interface CustomerState {
   cart: CartItem[];
 
   setScreen: (s: CustomerScreen) => void;
-  setTable: (id: string, number: number, sessionActive: boolean) => void;
-  setAuth: (token: string, customer: { id: string; phone: string; name: string | null }) => void;
+  setTable: (id: string, number: string, sessionActive: boolean) => void;
+  setAuth: (token: string, customer: CustomerIdentity) => void;
   logout: () => void;
   setOrder: (id: string, number: string, status: string, total: number) => void;
   setOrderStatus: (status: string) => void;
@@ -54,22 +61,22 @@ export function CustomerProvider({ children, tableId }: { children: React.ReactN
   })();
 
   const [screen, setScreen] = useState<CustomerScreen>(stored ? 'menu' : 'login');
-  const [tableNum, setTableNum] = useState<number | null>(null);
+  const [tableNum, setTableNum] = useState<string | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
   const [token, setToken] = useState<string | null>(stored);
-  const [customer, setCustomer] = useState<{ id: string; phone: string; name: string | null } | null>(storedCustomer);
+  const [customer, setCustomer] = useState<CustomerIdentity | null>(storedCustomer);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
   const [orderStatus, setOrderStatus] = useState<string | null>(null);
   const [orderTotal, setOrderTotal] = useState<number | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const setTable = useCallback((_id: string, num: number, active: boolean) => {
+  const setTable = useCallback((_id: string, num: string, active: boolean) => {
     setTableNum(num);
     setSessionActive(active);
   }, []);
 
-  const setAuth = useCallback((t: string, c: { id: string; phone: string; name: string | null }) => {
+  const setAuth = useCallback((t: string, c: CustomerIdentity) => {
     localStorage.setItem('customer_token', t);
     localStorage.setItem('customer_user', JSON.stringify(c));
     setToken(t);

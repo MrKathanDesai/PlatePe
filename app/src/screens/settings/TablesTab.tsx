@@ -3,6 +3,10 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useApp } from '../../store/app-store-context';
 import { tablesApi } from '../../api/tables';
 
+function normalizeTableNumber(value: string) {
+  return value.trim().toUpperCase().replace(/\s+/g, '');
+}
+
 export default function TablesTab() {
   const { tables, refreshTables, showToast } = useApp();
   const [newNumber, setNewNumber] = useState('');
@@ -12,10 +16,15 @@ export default function TablesTab() {
   const activeTables = tables.filter((t) => t.isActive);
 
   const handleAdd = async () => {
-    if (!newNumber.trim()) { showToast('Enter a table number'); return; }
+    const normalizedNumber = normalizeTableNumber(newNumber);
+    if (!normalizedNumber) { showToast('Enter a table number'); return; }
+    if (!/^T([1-9]|10)$/.test(normalizedNumber)) {
+      showToast('Only T1 to T10 are supported');
+      return;
+    }
     setAdding(true);
     try {
-      await tablesApi.create({ number: newNumber.trim(), seats: parseInt(newSeats) || 4 });
+      await tablesApi.create({ number: normalizedNumber, seats: parseInt(newSeats, 10) || 4 });
       await refreshTables();
       setNewNumber(''); setNewSeats('4');
       showToast('Table added');
@@ -32,10 +41,13 @@ export default function TablesTab() {
     <div style={{ maxWidth: 680 }}>
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: '0 0 16px' }}>Add Table</h2>
+        <p style={{ fontSize: 12, color: 'var(--text-2)', margin: '0 0 14px' }}>
+          Only the standard dining tables T1 through T10 are supported.
+        </p>
         <div style={{ display: 'flex', gap: 10 }}>
           <div style={{ flex: 2 }}>
-            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Number / Name</label>
-            <input className="input" placeholder="T1, Bar 2, Patio 3…" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Table Number</label>
+            <input className="input" placeholder="T1 to T10" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Seats</label>

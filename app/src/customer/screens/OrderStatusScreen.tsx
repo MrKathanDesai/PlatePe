@@ -1,15 +1,37 @@
 import { useEffect, useState, useCallback } from 'react';
 import { customerApi } from '../api/customerApi';
 import { useCustomer } from '../CustomerContext';
-import { io, Socket } from 'socket.io-client';
+import { getKDSSocket } from '../../api/kds';
 
-const WS_URL = import.meta.env.VITE_API_URL ?? '';
+const STATUS_STEPS = ['Open', 'Sent', 'Ready', 'Paid'] as const;
+type CustomerDisplayStatus = typeof STATUS_STEPS[number];
 
-const STATUS_STEPS = ['Open', 'Sent', 'Ready', 'Paid'];
-
-function stepIndex(status: string) {
+function stepIndex(status: CustomerDisplayStatus) {
   const idx = STATUS_STEPS.indexOf(status);
   return idx === -1 ? 0 : idx;
+}
+
+function deriveDisplayStatus(
+  order: {
+    status: string;
+    items: { status: string }[];
+  } | null,
+  fallbackStatus: string | null,
+): CustomerDisplayStatus {
+  const rawStatus = order?.status ?? fallbackStatus ?? 'Open';
+  if (rawStatus === 'Paid') return 'Paid';
+
+  const activeItems = (order?.items ?? []).filter((item) => item.status !== 'Voided');
+  if (!activeItems.length) {
+    return rawStatus === 'Sent' ? 'Sent' : 'Open';
+  }
+
+  if (activeItems.every((item) => item.status === 'Done')) {
+    return 'Ready';
+  }
+
+  const hasStartedPrep = activeItems.some((item) => item.status === 'Sent' || item.status === 'Done');
+  return hasStartedPrep || rawStatus === 'Sent' ? 'Sent' : 'Open';
 }
 
 export default function OrderStatusScreen() {
@@ -44,28 +66,38 @@ export default function OrderStatusScreen() {
 
   useEffect(() => {
     if (!orderId) return;
-    const socket: Socket = io(WS_URL, { transports: ['websocket'] });
+    const socket = getKDSSocket();
 
-    socket.on('order:paid', (data: { orderId: string }) => {
-      if (data.orderId === orderId) {
-        setOrderStatus('Paid');
-        refresh();
-      }
-    });
+    const handlePaid = (data: { orderId: string }) => {
+      if (data.orderId !== orderId) return;
+      setOrderStatus('Paid');
+      refresh();
+    };
 
-    socket.on('order:status', (data: { orderId: string; status: string }) => {
-      if (data.orderId === orderId) {
-        setOrderStatus(data.status);
-        refresh();
-      }
-    });
+    const handleStage = (ticket: { orderId: string }) => {
+      if (ticket.orderId !== orderId) return;
+      refresh();
+    };
 
-    return () => { socket.disconnect(); };
+    const pollId = window.setInterval(() => {
+      void refresh();
+    }, 10000);
+
+    socket.on('order:paid', handlePaid);
+    socket.on('ticket:stage', handleStage);
+
+    return () => {
+      window.clearInterval(pollId);
+      socket.off('order:paid', handlePaid);
+      socket.off('ticket:stage', handleStage);
+    };
   }, [orderId, refresh, setOrderStatus]);
 
-  const status = order?.status ?? orderStatus ?? 'Open';
+  const status = deriveDisplayStatus(order, orderStatus);
   const step = stepIndex(status);
   const isPaid = status === 'Paid';
+  const canSettleBill = status === 'Ready';
+  const billTotal = Number(order?.total ?? orderTotal ?? 0);
 
   function handlePayNow() {
     setScreen('payment');
@@ -111,9 +143,9 @@ export default function OrderStatusScreen() {
                 {status === 'Open' ? 'Order Received' : status === 'Sent' ? 'Being Prepared' : 'Ready to Serve!'}
               </h2>
               <p style={styles.statusSub}>
-                {status === 'Open' && 'Your order has been placed successfully.'}
+                {status === 'Open' && 'Your order has been placed successfully and is heading to the kitchen.'}
                 {status === 'Sent' && 'The kitchen is working on your order.'}
-                {status === 'Ready' && 'Your food is on its way to your table!'}
+                {status === 'Ready' && 'Your meal is ready. You can settle the bill whenever you are done.'}
               </p>
             </>
           )}
@@ -170,39 +202,72 @@ export default function OrderStatusScreen() {
                     fontWeight: 600,
                     padding: '2px 8px',
                     borderRadius: 100,
-                    background: item.status === 'Ready' ? 'rgba(39,103,73,0.10)' : item.status === 'Sent' ? 'rgba(146,88,10,0.08)' : 'rgba(59,95,190,0.08)',
-                    color: item.status === 'Ready' ? '#276749' : item.status === 'Sent' ? '#92580A' : '#3B5FBE',
+                    background: item.status === 'Done' ? 'rgba(39,103,73,0.10)' : item.status === 'Sent' ? 'rgba(146,88,10,0.08)' : 'rgba(59,95,190,0.08)',
+                    color: item.status === 'Done' ? '#276749' : item.status === 'Sent' ? '#92580A' : '#3B5FBE',
                   }}>
-                    {item.status}
+                    {item.status === 'Done' ? 'Ready' : item.status}
                   </span>
                   <span style={{ fontWeight: 600, fontSize: 14 }}>₹{(item.unitPrice * item.quantity).toFixed(0)}</span>
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {(order || orderTotal !== null) && (
+          <div style={styles.billCard}>
+            <div style={styles.billHeader}>
+              <h3 style={styles.itemsTitle}>Bill</h3>
+              <span style={{
+                ...styles.billTag,
+                background: isPaid
+                  ? 'rgba(39,103,73,0.10)'
+                  : canSettleBill
+                    ? 'rgba(196,98,45,0.10)'
+                    : 'rgba(59,95,190,0.08)',
+                color: isPaid
+                  ? '#276749'
+                  : canSettleBill
+                    ? '#C4622D'
+                    : '#3B5FBE',
+              }}>
+                {isPaid ? 'Paid' : canSettleBill ? 'Ready to settle' : 'Pay at the end'}
+              </span>
+            </div>
 
             <div style={styles.billSummary}>
-              <div style={styles.billRow}><span>Subtotal</span><span>₹{Number(order.subtotal).toFixed(2)}</span></div>
-              <div style={styles.billRow}><span>GST (5%)</span><span>₹{Number(order.tax).toFixed(2)}</span></div>
+              <div style={styles.billRow}><span>Subtotal</span><span>₹{Number(order?.subtotal ?? 0).toFixed(2)}</span></div>
+              <div style={styles.billRow}><span>GST (5%)</span><span>₹{Number(order?.tax ?? 0).toFixed(2)}</span></div>
               <div style={{ ...styles.billRow, fontWeight: 700, fontSize: 16, borderTop: '1px solid #EAE4DB', paddingTop: 10, marginTop: 4 }}>
-                <span>Total</span><span>₹{Number(order.total).toFixed(2)}</span>
+                <span>Total</span><span>₹{billTotal.toFixed(2)}</span>
               </div>
             </div>
+
+            {!isPaid && (
+              <>
+                <p style={styles.billHelp}>
+                  {canSettleBill
+                    ? 'Your order is complete. Settle the bill whenever you are ready.'
+                    : 'No upfront payment needed. We will keep the bill open until your meal is finished.'}
+                </p>
+                <button
+                  style={{ ...styles.payBtn, marginTop: 0, opacity: canSettleBill ? 1 : 0.55 }}
+                  onClick={handlePayNow}
+                  disabled={!canSettleBill}
+                >
+                  {canSettleBill ? `Settle Bill ₹${billTotal.toFixed(0)}` : 'Settle Bill After Service'}
+                </button>
+              </>
+            )}
           </div>
         )}
 
         {/* Actions */}
         {!isPaid && (
           <div style={styles.actions}>
-            {(status === 'Ready' || status === 'Open' || status === 'Sent') && (
-              <button style={styles.payBtn} onClick={handlePayNow}>
-                Pay Bill ₹{Number(order?.total ?? orderTotal ?? 0).toFixed(0)}
-              </button>
-            )}
-            {(status === 'Open') && (
-              <button style={styles.addMoreBtn} onClick={handleAddMore}>
-                + Add More Items
-              </button>
-            )}
+            <button style={styles.addMoreBtn} onClick={handleAddMore}>
+              + Add More Items
+            </button>
           </div>
         )}
       </div>
@@ -321,12 +386,31 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '20px',
     boxShadow: '0 1px 4px rgba(28,24,20,0.06)',
   },
+  billCard: {
+    background: '#fff',
+    borderRadius: 20,
+    padding: '20px',
+    boxShadow: '0 1px 4px rgba(28,24,20,0.06)',
+  },
   itemsTitle: {
     fontFamily: "'Fraunces', Georgia, serif",
     fontSize: 17,
     fontWeight: 600,
     color: '#1C1814',
     margin: '0 0 14px',
+  },
+  billHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  billTag: {
+    borderRadius: 999,
+    padding: '6px 10px',
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
   },
   itemRow: {
     display: 'flex',
@@ -337,6 +421,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   billSummary: { marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   billRow: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#5C5650' },
+  billHelp: {
+    fontSize: 13,
+    color: '#5C5650',
+    lineHeight: 1.55,
+    margin: '16px 0 14px',
+  },
   actions: { display: 'flex', flexDirection: 'column', gap: 10 },
   payBtn: {
     background: '#C4622D',
