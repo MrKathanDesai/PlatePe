@@ -8,8 +8,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Payment } from './entities/payment.entity';
 import { Order } from '../orders/entities/order.entity';
-import { OrderLineItem } from '../orders/entities/order-line-item.entity';
-import { Table } from '../tables/entities/table.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import {
   CreatePaymentDto,
@@ -19,17 +17,18 @@ import {
 } from './dto/create-payment.dto';
 import { User } from '../auth/entities/user.entity';
 import { KDSGateway } from '../kds/kds.gateway';
+import { OrdersService } from '../orders/orders.service';
+import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     @InjectRepository(Payment) private paymentRepo: Repository<Payment>,
     @InjectRepository(Order) private orderRepo: Repository<Order>,
-    @InjectRepository(OrderLineItem) private itemRepo: Repository<OrderLineItem>,
-    @InjectRepository(Table) private tableRepo: Repository<Table>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     private dataSource: DataSource,
     private kdsGateway: KDSGateway,
+    private ordersService: OrdersService,
   ) {}
 
   async create(dto: CreatePaymentDto): Promise<Payment> {
@@ -48,7 +47,11 @@ export class PaymentsService {
   }
 
   async confirm(id: string, dto: ConfirmPaymentDto, user: User): Promise<Payment> {
-    return this.dataSource.transaction(async (manager) => {
+    let dispatchedTickets: KDSTicket[] = [];
+    let paidOrderId: string | null = null;
+    let paidOrderTotal: number | null = null;
+
+    const result = await this.dataSource.transaction(async (manager) => {
       const payment = await manager.findOne(Payment, { where: { id } });
       if (!payment) throw new NotFoundException('Payment not found');
       if (payment.status !== 'PENDING') {
@@ -69,51 +72,62 @@ export class PaymentsService {
       });
       const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
 
-      if (totalPaid >= Number(order.total)) {
+      if (totalPaid >= Number(order.total) && order.status !== 'Paid') {
+        const dispatch = await this.ordersService.dispatchPendingItemsInTransaction(manager, order.id);
+        dispatchedTickets = dispatch.tickets;
         await manager.update(Order, order.id, { status: 'Paid' });
-        if (order.tableId) {
-          await manager.update(Table, order.tableId, {
-            status: 'Available',
-            occupiedSince: null,
-            currentOrderId: null,
-            currentBill: null,
-          } as any);
-        }
-        this.kdsGateway.emitOrderPaid({ orderId: order.id, total: Number(order.total) });
+        await this.ordersService.syncPaidOrderTableStateInTransaction(manager, order.id);
+        paidOrderId = order.id;
+        paidOrderTotal = Number(order.total);
       }
 
-      const result = await manager.findOne(Payment, { where: { id } });
-      if (!result) throw new NotFoundException('Payment not found after update');
-      return result;
+      const updatedPayment = await manager.findOne(Payment, { where: { id } });
+      if (!updatedPayment) throw new NotFoundException('Payment not found after update');
+      return updatedPayment;
     });
+
+    this.ordersService.emitDispatchTickets(dispatchedTickets);
+    if (paidOrderId && paidOrderTotal !== null) {
+      this.kdsGateway.emitOrderPaid({ orderId: paidOrderId, total: paidOrderTotal });
+    }
+
+    return result;
   }
 
   async handleUpiWebhook(upiRef: string, status: 'CONFIRMED' | 'FAILED') {
-    const payment = await this.paymentRepo.findOne({ where: { upiRef } });
-    if (!payment) return;
+    let dispatchedTickets: KDSTicket[] = [];
+    let paidOrderId: string | null = null;
+    let paidOrderTotal: number | null = null;
 
-    await this.paymentRepo.update(payment.id, { status });
+    await this.dataSource.transaction(async (manager) => {
+      const payment = await manager.findOne(Payment, { where: { upiRef } });
+      if (!payment) return;
 
-    if (status === 'CONFIRMED') {
-      const order = await this.orderRepo.findOne({ where: { id: payment.orderId } });
+      await manager.update(Payment, payment.id, { status });
+
+      if (status !== 'CONFIRMED') return;
+
+      const order = await manager.findOne(Order, { where: { id: payment.orderId } });
       if (!order) return;
 
-      const payments = await this.paymentRepo.find({
+      const payments = await manager.find(Payment, {
         where: { orderId: payment.orderId, status: 'CONFIRMED' },
       });
       const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
 
-      if (totalPaid >= Number(order.total)) {
-        await this.orderRepo.update(order.id, { status: 'Paid' });
-        if (order.tableId) {
-          await this.tableRepo.update(order.tableId, {
-            status: 'Available',
-            occupiedSince: null,
-            currentOrderId: null,
-            currentBill: null,
-          } as any);
-        }
+      if (totalPaid >= Number(order.total) && order.status !== 'Paid') {
+        const dispatch = await this.ordersService.dispatchPendingItemsInTransaction(manager, order.id);
+        dispatchedTickets = dispatch.tickets;
+        await manager.update(Order, order.id, { status: 'Paid' });
+        await this.ordersService.syncPaidOrderTableStateInTransaction(manager, order.id);
+        paidOrderId = order.id;
+        paidOrderTotal = Number(order.total);
       }
+    });
+
+    this.ordersService.emitDispatchTickets(dispatchedTickets);
+    if (paidOrderId && paidOrderTotal !== null) {
+      this.kdsGateway.emitOrderPaid({ orderId: paidOrderId, total: paidOrderTotal });
     }
   }
 

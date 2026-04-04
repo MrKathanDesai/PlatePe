@@ -5,12 +5,16 @@ import { KDSTicket, TicketStage } from './entities/kds-ticket.entity';
 import type { KDSStation } from '../products/entities/category.entity';
 import { KDSGateway } from './kds.gateway';
 import { OrderLineItem } from '../orders/entities/order-line-item.entity';
+import { Order } from '../orders/entities/order.entity';
+import { Table } from '../tables/entities/table.entity';
 
 @Injectable()
 export class KDSService {
   constructor(
     @InjectRepository(KDSTicket) private ticketRepo: Repository<KDSTicket>,
     @InjectRepository(OrderLineItem) private itemRepo: Repository<OrderLineItem>,
+    @InjectRepository(Order) private orderRepo: Repository<Order>,
+    @InjectRepository(Table) private tableRepo: Repository<Table>,
     private gateway: KDSGateway,
   ) {}
 
@@ -68,6 +72,24 @@ export class KDSService {
           { id: In(itemIds), status: In(['Pending', 'Sent']) as any },
           { status: 'Done' as const },
         );
+      }
+
+      const order = await this.orderRepo.findOne({
+        where: { id: ticket.orderId },
+        relations: ['items'],
+      });
+      if (order?.status === 'Paid' && order.tableId) {
+        const hasOutstandingItems = order.items.some(
+          (item) => item.status !== 'Done' && item.status !== 'Voided',
+        );
+        if (!hasOutstandingItems) {
+          await this.tableRepo.update(order.tableId, {
+            status: 'Available',
+            occupiedSince: null,
+            currentOrderId: null,
+            currentBill: null,
+          } as any);
+        }
       }
     }
 

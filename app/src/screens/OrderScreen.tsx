@@ -260,7 +260,7 @@ export default function OrderScreen() {
     try {
       const res = await ordersApi.send(order.id);
       setOrder(res.data); setActiveOrder(res.data);
-      showToast('Sent to kitchen');
+      showToast('Sent to kitchen. Inventory updated.');
       if (isServer) navigate('FloorPlan');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } } };

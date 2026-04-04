@@ -16,6 +16,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { DiscountsModule } from './discounts/discounts.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { AuditModule } from './audit/audit.module';
+import { CustomerModule } from './customer/customer.module';
 
 // Entities
 import { User } from './auth/entities/user.entity';
@@ -35,6 +36,7 @@ import { Ingredient } from './inventory/entities/ingredient.entity';
 import { ProductRecipeLine } from './inventory/entities/product-recipe-line.entity';
 import { RecipeModifierEffect } from './inventory/entities/recipe-modifier-effect.entity';
 import { InventoryTransaction } from './inventory/entities/inventory-transaction.entity';
+import { Customer } from './customer/entities/customer.entity';
 
 @Module({
   controllers: [AppController],
@@ -69,6 +71,7 @@ import { InventoryTransaction } from './inventory/entities/inventory-transaction
           ProductRecipeLine,
           RecipeModifierEffect,
           InventoryTransaction,
+          Customer,
         ],
         synchronize: true, // Use migrations in production
         logging: config.get('NODE_ENV') !== 'production',
@@ -86,6 +89,7 @@ import { InventoryTransaction } from './inventory/entities/inventory-transaction
     DiscountsModule,
     ReportingModule,
     AuditModule,
+    CustomerModule,
     TypeOrmModule.forFeature([User, Category]),
   ],
   providers: [AppService, SeederService],

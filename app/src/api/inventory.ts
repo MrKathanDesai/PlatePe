@@ -1,5 +1,5 @@
 import client from './client';
-import type { InventoryItem } from '../types';
+import type { InventoryItem, InventoryTransaction } from '../types';
 
 export const inventoryApi = {
   getAll: () =>
@@ -7,6 +7,9 @@ export const inventoryApi = {
 
   getLowStock: () =>
     client.get<InventoryItem[]>('/inventory/low-stock'),
+
+  getTransactions: (ingredientId?: string) =>
+    client.get<InventoryTransaction[]>('/inventory/transactions', { params: ingredientId ? { ingredientId } : {} }),
 
   adjust: (data: { productId: string; adjustment: number; reason?: string }) =>
     client.post<InventoryItem>('/inventory/adjust', data),

@@ -1,8 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Upload, X } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  RefreshCw,
+  Upload,
+  X,
+} from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
 import { useApp } from '../../store/app-store-context';
-import type { InventoryItem } from '../../types';
+import type { InventoryItem, InventoryTransaction } from '../../types';
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -130,6 +138,7 @@ function InventoryImportModal({
   const [progress, setProgress] = useState(0);
   const [imported, setImported] = useState(0);
   const [errors, setErrors] = useState(0);
+  const [failureMessage, setFailureMessage] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const rows = mode === 'ingredients' ? ingredientRows : recipeRows;
@@ -149,6 +158,7 @@ function InventoryImportModal({
 
   const runImport = async () => {
     setStep('importing');
+    setFailureMessage('');
     setProgress(20);
     try {
       if (mode === 'ingredients') {
@@ -186,9 +196,11 @@ function InventoryImportModal({
       setErrors(rows.filter((row) => !row._valid).length);
       setStep('done');
       await onImported();
-    } catch {
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
       setImported(0);
       setErrors(validRows.length);
+      setFailureMessage(e?.response?.data?.message ?? 'Import failed');
       setStep('done');
     }
   };
@@ -314,6 +326,20 @@ function InventoryImportModal({
             <div style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 20 }}>
               {imported} imported{errors > 0 ? `, ${errors} failed` : ' successfully'}
             </div>
+            {failureMessage && (
+              <div style={{
+                background: 'var(--red-bg)',
+                border: '1px solid rgba(184,50,50,0.18)',
+                borderRadius: 8,
+                padding: '10px 14px',
+                fontSize: 13,
+                color: 'var(--red)',
+                marginBottom: 20,
+                textAlign: 'left',
+              }}>
+                {failureMessage}
+              </div>
+            )}
             <button className="btn btn-primary" onClick={onClose}>Done</button>
           </div>
         )}
@@ -325,18 +351,68 @@ function InventoryImportModal({
 export default function InventoryTab() {
   const { showToast } = useApp();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [adjustment, setAdjustment] = useState<Record<string, string>>({});
   const [importMode, setImportMode] = useState<ImportMode | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
 
-  const load = async () => {
-    try { const r = await inventoryApi.getAll(); setItems(r.data); }
-    catch { /* silent */ }
-    finally { setLoading(false); }
+  const load = async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const [inventoryRes, transactionRes] = await Promise.all([
+        inventoryApi.getAll(),
+        inventoryApi.getTransactions(),
+      ]);
+      setItems(inventoryRes.data);
+      setTransactions(transactionRes.data);
+      setLastLoadedAt(new Date().toLocaleTimeString());
+    } catch {
+      if (!silent) showToast('Failed to refresh inventory');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load(true);
+
+    const onFocus = () => { void load(true); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void load(true);
+    };
+    const interval = window.setInterval(() => { void load(true); }, 15000);
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
+  const formatQuantity = (value: number) =>
+    Number.isInteger(value) ? value.toString() : value.toFixed(3).replace(/\.?0+$/, '');
+
+  const formatTransactionLabel = (tx: InventoryTransaction) => {
+    switch (tx.type) {
+      case 'ORDER_CONSUMPTION':
+        return 'Order fired';
+      case 'ORDER_REPLENISHMENT':
+        return 'Order reversal';
+      case 'MANUAL_ADJUSTMENT':
+        return 'Manual adjustment';
+      case 'IMPORT':
+        return 'Import';
+      default:
+        return tx.type;
+    }
+  };
 
   const handleAdjust = async (item: InventoryItem) => {
     const val = parseFloat(adjustment[item.id] ?? '0');
@@ -359,10 +435,13 @@ export default function InventoryTab() {
         <div>
           <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>Ingredient Inventory</h2>
           <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>
-            Upload ingredients first, then recipes, so orders can deduct stock from ingredients instead of finished products.
+            Orders deduct ingredient stock when they are fired to kitchen or brewbar, not when items are only added to the cart.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => load()} disabled={refreshing}>
+            <RefreshCw size={13} /> {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
           <button className="btn btn-ghost" onClick={() => setImportMode('ingredients')}>
             <FileText size={13} /> Import Ingredients
           </button>
@@ -370,6 +449,10 @@ export default function InventoryTab() {
             <FileText size={13} /> Import Recipes
           </button>
         </div>
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14 }}>
+        {lastLoadedAt ? `Last refreshed at ${lastLoadedAt}` : 'Loading latest inventory…'}
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -386,9 +469,9 @@ export default function InventoryTab() {
                       <span style={{ fontWeight: low ? 600 : 400 }}>{item.productName}</span>
                     </div>
                   </td>
-                  <td style={{ fontWeight: 700, color: low ? 'var(--red)' : 'var(--green)' }}>{item.quantity}</td>
+                  <td style={{ fontWeight: 700, color: low ? 'var(--red)' : 'var(--green)' }}>{formatQuantity(item.quantity)}</td>
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{item.unit}</td>
-                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{item.lowStockThreshold}</td>
+                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{formatQuantity(item.lowStockThreshold)}</td>
                   <td>
                     <input className="input" type="number" placeholder="+5 or −2"
                       value={adjustment[item.id] ?? ''} onChange={(e) => setAdjustment((p) => ({ ...p, [item.id]: e.target.value }))}
@@ -407,6 +490,49 @@ export default function InventoryTab() {
             {items.length === 0 && (
               <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 32 }}>
                 No inventory items yet. Import ingredients first.
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 18 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Recent Inventory Activity</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+            Use this to verify that fired orders are writing inventory transactions.
+          </div>
+        </div>
+        <table className="data-table">
+          <thead><tr><th>Time</th><th>Ingredient</th><th>Activity</th><th>Delta</th><th>Balance</th></tr></thead>
+          <tbody>
+            {transactions.slice(0, 12).map((tx) => {
+              const isConsumption = Number(tx.quantityDelta) < 0;
+              return (
+                <tr key={tx.id}>
+                  <td style={{ color: 'var(--text-3)', fontSize: 12 }}>
+                    {new Date(tx.createdAt).toLocaleString()}
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{tx.ingredient?.name ?? 'Ingredient'}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{tx.ingredient?.code ?? '—'}</div>
+                  </td>
+                  <td>
+                    <div>{formatTransactionLabel(tx)}</div>
+                    {tx.reason && (
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{tx.reason}</div>
+                    )}
+                  </td>
+                  <td style={{ fontWeight: 700, color: isConsumption ? 'var(--red)' : 'var(--green)' }}>
+                    {Number(tx.quantityDelta) > 0 ? '+' : ''}{formatQuantity(Number(tx.quantityDelta))}
+                  </td>
+                  <td>{tx.balanceAfter == null ? '—' : formatQuantity(Number(tx.balanceAfter))}</td>
+                </tr>
+              );
+            })}
+            {transactions.length === 0 && (
+              <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 24 }}>
+                No inventory activity yet. Fire an order to see consumption entries here.
               </td></tr>
             )}
           </tbody>

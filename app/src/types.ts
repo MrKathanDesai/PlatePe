@@ -191,6 +191,32 @@ export interface InventoryItem {
   updatedAt: string;
 }
 
+export type InventoryTransactionType =
+  | 'MANUAL_ADJUSTMENT'
+  | 'IMPORT'
+  | 'ORDER_CONSUMPTION'
+  | 'ORDER_REPLENISHMENT';
+
+export interface InventoryTransaction {
+  id: string;
+  ingredientId: string;
+  type: InventoryTransactionType;
+  quantityDelta: number;
+  balanceAfter: number | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  actorId: string | null;
+  reason: string | null;
+  meta: Record<string, unknown> | null;
+  createdAt: string;
+  ingredient?: {
+    id: string;
+    code: string;
+    name: string;
+    baseUnit: string;
+  };
+}
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 /** One row per day returned by GET /reports/daily */
 export interface DailyReport {

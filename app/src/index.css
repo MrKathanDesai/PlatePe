@@ -246,6 +246,11 @@ select.input { cursor: pointer; }
   animation: fadeIn 150ms ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.85; }
+}
 
 /* ─── Role pill (sidebar header) ─────────────────────────────────────────────── */
 .role-label {

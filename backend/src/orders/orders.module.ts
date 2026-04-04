@@ -9,10 +9,12 @@ import { Category } from '../products/entities/category.entity';
 import { Table } from '../tables/entities/table.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
+import { KDSModule } from '../kds/kds.module';
 import { InventoryModule } from '../inventory/inventory.module';
 
 @Module({
   imports: [
+    KDSModule,
     InventoryModule,
     TypeOrmModule.forFeature([Order, OrderLineItem, Product, Category, Table, AuditLog, KDSTicket]),
   ],

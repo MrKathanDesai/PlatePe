@@ -178,10 +178,19 @@ export default function FloorPlanScreen() {
         navigate('Order');
       } else if (table.currentOrderId) {
         const res = await ordersApi.getById(table.currentOrderId);
-        // If the order was already paid, refresh tables and don't navigate
-        if (res.data.status === 'Paid' || res.data.status === 'Voided') {
+        if (res.data.status === 'Voided') {
           await refreshTables();
           showToast('Table is now available');
+        } else if (res.data.status === 'Paid') {
+          const hasOutstandingItems = res.data.items.some(
+            (item) => item.status !== 'Done' && item.status !== 'Voided',
+          );
+          await refreshTables();
+          showToast(
+            hasOutstandingItems
+              ? 'Order is already paid and still being prepared'
+              : 'Table is now available',
+          );
         } else {
           setActiveOrder(res.data);
           navigate('Order');

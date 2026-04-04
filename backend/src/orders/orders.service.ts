@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
 import { OrderLineItem } from './entities/order-line-item.entity';
 import { CreateOrderDto, OrderItemDto } from './dto/create-order.dto';
@@ -19,6 +19,7 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { InventoryService } from '../inventory/inventory.service';
+import { KDSGateway } from '../kds/kds.gateway';
 
 @Injectable()
 export class OrdersService {
@@ -31,6 +32,7 @@ export class OrdersService {
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     @InjectRepository(KDSTicket) private kdsRepo: Repository<KDSTicket>,
     private inventoryService: InventoryService,
+    private kdsGateway: KDSGateway,
     private dataSource: DataSource,
   ) {}
 
@@ -119,8 +121,179 @@ export class OrdersService {
     });
   }
 
+  emitDispatchTickets(tickets: KDSTicket[]) {
+    for (const ticket of tickets) {
+      if (ticket.type === 'ADDON') {
+        this.kdsGateway.emitAddonTicket(ticket);
+      } else {
+        this.kdsGateway.emitNewTicket(ticket);
+      }
+    }
+  }
+
+  async dispatchPendingItemsInTransaction(
+    manager: EntityManager,
+    orderId: string,
+  ): Promise<{ order: Order; tickets: KDSTicket[]; dispatchedCount: number }> {
+    const order = await manager.findOne(Order, {
+      where: { id: orderId },
+      relations: ['items'],
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.status === 'Paid' || order.status === 'Voided') {
+      throw new BadRequestException('Cannot dispatch a completed order');
+    }
+
+    const pendingItems = order.items.filter((i) => i.status === 'Pending');
+    if (!pendingItems.length) {
+      return { order, tickets: [], dispatchedCount: 0 };
+    }
+
+    const isAddon = order.status === 'Sent';
+    const table = order.tableId
+      ? await manager.findOne(Table, { where: { id: order.tableId } })
+      : null;
+    const tableNumber = table?.number ?? undefined;
+
+    const productIds = [...new Set(pendingItems.map((i) => i.productId))];
+    const products = productIds.length
+      ? await manager.find(Product, {
+          where: { id: In(productIds) },
+          relations: ['category'],
+        })
+      : [];
+    const stationMap = new Map<string, 'KITCHEN' | 'BREWBAR'>(
+      products.map((p) => [p.id, (p.category?.station ?? 'KITCHEN') as 'KITCHEN' | 'BREWBAR']),
+    );
+
+    const kitchenItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'KITCHEN');
+    const brewbarItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'BREWBAR');
+
+    const resolvedInventory = await this.inventoryService.resolveIngredientRequirements(
+      manager,
+      pendingItems,
+    );
+    const recipeBackedItemIds = new Set(resolvedInventory.recipeBackedItemIds);
+    const legacyStockItems = pendingItems.filter((item) => !recipeBackedItemIds.has(item.id));
+
+    await manager.update(
+      OrderLineItem,
+      pendingItems.map((i) => i.id),
+      { status: 'Sent' },
+    );
+
+    await this.inventoryService.applyIngredientRequirements(
+      manager,
+      resolvedInventory.requirements,
+      {
+        type: 'ORDER_CONSUMPTION',
+        referenceType: 'Order',
+        referenceId: orderId,
+        reason: isAddon ? 'Addon fired to station' : 'Order fired to station',
+      },
+    );
+
+    for (const item of legacyStockItems) {
+      if (item.productId) {
+        await manager.decrement(Product, { id: item.productId }, 'stockQty', item.quantity);
+      }
+    }
+
+    const ticketType: 'ADDON' | 'NEW' = isAddon ? 'ADDON' : 'NEW';
+    const tickets: KDSTicket[] = [];
+
+    if (kitchenItems.length) {
+      const ticket = manager.create(KDSTicket, {
+        orderId,
+        orderNumber: order.orderNumber,
+        tableNumber,
+        station: 'KITCHEN' as const,
+        type: ticketType,
+        stage: 'TO_COOK' as const,
+        items: kitchenItems.map((i) => ({
+          itemId: i.id,
+          name: i.productName,
+          quantity: i.quantity,
+          note: i.note ?? null,
+          modifiers: i.modifiers ?? [],
+        })),
+      });
+      tickets.push(await manager.save(KDSTicket, ticket));
+    }
+
+    if (brewbarItems.length) {
+      const ticket = manager.create(KDSTicket, {
+        orderId,
+        orderNumber: order.orderNumber,
+        tableNumber,
+        station: 'BREWBAR' as const,
+        type: ticketType,
+        stage: 'TO_COOK' as const,
+        items: brewbarItems.map((i) => ({
+          itemId: i.id,
+          name: i.productName,
+          quantity: i.quantity,
+          note: i.note ?? null,
+          modifiers: i.modifiers ?? [],
+        })),
+      });
+      tickets.push(await manager.save(KDSTicket, ticket));
+    }
+
+    if (order.status !== 'Sent') {
+      await manager.update(Order, orderId, { status: 'Sent' });
+    }
+
+    if (order.tableId) {
+      await manager.update(Table, order.tableId, {
+        status: 'Occupied',
+        occupiedSince: table?.occupiedSince ?? new Date(),
+        currentOrderId: order.id,
+      });
+    }
+
+    const updatedOrder = await manager.findOne(Order, {
+      where: { id: orderId },
+      relations: ['items'],
+    });
+    if (!updatedOrder) throw new NotFoundException('Order not found after dispatch');
+
+    return { order: updatedOrder, tickets, dispatchedCount: pendingItems.length };
+  }
+
+  async syncPaidOrderTableStateInTransaction(manager: EntityManager, orderId: string): Promise<void> {
+    const order = await manager.findOne(Order, {
+      where: { id: orderId },
+      relations: ['items'],
+    });
+    if (!order || !order.tableId) return;
+
+    const hasOutstandingItems = order.items.some(
+      (item) => item.status !== 'Done' && item.status !== 'Voided',
+    );
+
+    if (hasOutstandingItems) {
+      const table = await manager.findOne(Table, { where: { id: order.tableId } });
+      await manager.update(Table, order.tableId, {
+        status: 'Occupied',
+        occupiedSince: table?.occupiedSince ?? new Date(),
+        currentOrderId: order.id,
+      });
+      return;
+    }
+
+    await manager.update(Table, order.tableId, {
+      status: 'Available',
+      occupiedSince: null,
+      currentOrderId: null,
+      currentBill: null,
+    } as any);
+  }
+
   async sendToKitchen(orderId: string): Promise<Order> {
-    return this.dataSource.transaction(async (manager) => {
+    let tickets: KDSTicket[] = [];
+
+    const result = await this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(Order, {
         where: { id: orderId },
         relations: ['items'],
@@ -130,120 +303,14 @@ export class OrdersService {
         throw new BadRequestException('Cannot send a completed order to kitchen');
       }
 
-      const pendingItems = order.items.filter((i) => i.status === 'Pending');
-      if (!pendingItems.length) throw new BadRequestException('No pending items to send');
-
-      const isAddon = order.status === 'Sent';
-
-      // Look up table number for display
-      let tableNumber: string | undefined;
-      if (order.tableId) {
-        const table = await manager.findOne(Table, { where: { id: order.tableId } });
-        tableNumber = table?.number ?? undefined;
-      }
-
-      // Resolve category stations for routing
-      const productIds = [...new Set(pendingItems.map((i) => i.productId))];
-      const products = await manager.find(Product, {
-        where: { id: In(productIds) },
-        relations: ['category'],
-      });
-      const stationMap = new Map<string, 'KITCHEN' | 'BREWBAR'>(
-        products.map((p) => [p.id, (p.category?.station ?? 'KITCHEN') as 'KITCHEN' | 'BREWBAR']),
-      );
-
-      // Split items by station
-      const kitchenItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'KITCHEN');
-      const brewbarItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'BREWBAR');
-
-      const resolvedInventory = await this.inventoryService.resolveIngredientRequirements(
-        manager,
-        pendingItems,
-      );
-      const recipeBackedItemIds = new Set(resolvedInventory.recipeBackedItemIds);
-      const legacyStockItems = pendingItems.filter((item) => !recipeBackedItemIds.has(item.id));
-
-      // Mark all pending items as Sent
-      await manager.update(
-        OrderLineItem,
-        pendingItems.map((i) => i.id),
-        { status: 'Sent' },
-      );
-
-      await this.inventoryService.applyIngredientRequirements(
-        manager,
-        resolvedInventory.requirements,
-        {
-          type: 'ORDER_CONSUMPTION',
-          referenceType: 'Order',
-          referenceId: orderId,
-          reason: isAddon ? 'Addon fired to station' : 'Order fired to station',
-        },
-      );
-
-      // Backward-compatible fallback for products that do not have recipes yet.
-      for (const item of legacyStockItems) {
-        if (item.productId) {
-          await manager.decrement(Product, { id: item.productId }, 'stockQty', item.quantity);
-        }
-      }
-
-      const ticketType = (isAddon ? 'ADDON' : 'NEW') as any;
-
-      // Create Kitchen ticket (food)
-      if (kitchenItems.length) {
-        const ticket = manager.create(KDSTicket, {
-          orderId,
-          orderNumber: order.orderNumber,
-          tableNumber,
-          station: 'KITCHEN' as const,
-          type: ticketType,
-          stage: 'TO_COOK' as const,
-          items: kitchenItems.map((i) => ({
-            itemId: i.id,
-            name: i.productName,
-            quantity: i.quantity,
-            note: i.note ?? null,
-            modifiers: i.modifiers ?? [],
-          })),
-        });
-        await manager.save(KDSTicket, ticket);
-      }
-
-      // Create Brewbar ticket (beverages)
-      if (brewbarItems.length) {
-        const ticket = manager.create(KDSTicket, {
-          orderId,
-          orderNumber: order.orderNumber,
-          tableNumber,
-          station: 'BREWBAR' as const,
-          type: ticketType,
-          stage: 'TO_COOK' as const,
-          items: brewbarItems.map((i) => ({
-            itemId: i.id,
-            name: i.productName,
-            quantity: i.quantity,
-            note: i.note ?? null,
-            modifiers: i.modifiers ?? [],
-          })),
-        });
-        await manager.save(KDSTicket, ticket);
-      }
-
-      await manager.update(Order, orderId, { status: 'Sent' });
-
-      // Update table status
-      if (order.tableId) {
-        await manager.update(Table, order.tableId, {
-          status: 'Occupied',
-          occupiedSince: order.tableId ? (new Date()) : undefined,
-        });
-      }
-
-      const result = await manager.findOne(Order, { where: { id: orderId }, relations: ['items'] });
-      if (!result) throw new NotFoundException('Order not found after send');
-      return result;
+      const dispatch = await this.dispatchPendingItemsInTransaction(manager, orderId);
+      if (!dispatch.dispatchedCount) throw new BadRequestException('No pending items to send');
+      tickets = dispatch.tickets;
+      return dispatch.order;
     });
+
+    this.emitDispatchTickets(tickets);
+    return result;
   }
 
   async addItems(orderId: string, items: OrderItemDto[]): Promise<Order> {
