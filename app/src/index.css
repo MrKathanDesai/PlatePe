@@ -1,0 +1,261 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* ─── Design Tokens ──────────────────────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg:        #F8F6F2;
+  --surface:   #FFFFFF;
+  --surface-2: #F3EFE8;
+  --surface-3: #EAE4DB;
+
+  /* Borders */
+  --border:     #DDD8D0;
+  --border-mid: #C5BEB4;
+
+  /* Text */
+  --text:   #1C1814;
+  --text-2: #5C5650;
+  --text-3: #A09890;
+
+  /* Role accent — Admin default */
+  --accent:    #C4622D;
+  --accent-bg: rgba(196, 98, 45, 0.09);
+  --accent-mid: rgba(196, 98, 45, 0.18);
+
+  /* Semantic status */
+  --green:    #276749;
+  --green-bg: rgba(39, 103, 73, 0.08);
+  --amber:    #92580A;
+  --amber-bg: rgba(146, 88, 10, 0.08);
+  --red:      #B83232;
+  --red-bg:   rgba(184, 50, 50, 0.08);
+  --blue:     #3B5FBE;
+  --blue-bg:  rgba(59, 95, 190, 0.08);
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(28,24,20,.05);
+  --shadow-sm: 0 1px 3px rgba(28,24,20,.06), 0 1px 2px rgba(28,24,20,.04);
+  --shadow-md: 0 4px 12px rgba(28,24,20,.08), 0 1px 4px rgba(28,24,20,.04);
+  --shadow-lg: 0 16px 40px rgba(28,24,20,.12), 0 4px 12px rgba(28,24,20,.06);
+  --shadow-xl: 0 24px 56px rgba(28,24,20,.16), 0 8px 20px rgba(28,24,20,.08);
+
+  /* Typography */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-ui: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+/* ─── Role accent overrides ──────────────────────────────────────────────────── */
+/* Admin: terracotta (default — no override needed) */
+[data-role="Manager"] { --accent: #7C5CBF; --accent-bg: rgba(124,92,191,0.08);  --accent-mid: rgba(124,92,191,0.16); }
+[data-role="Cashier"] { --accent: #2A5FA8; --accent-bg: rgba(42,95,168,0.08);   --accent-mid: rgba(42,95,168,0.16); }
+[data-role="Server"]  { --accent: #2A7A5F; --accent-bg: rgba(42,122,95,0.08);   --accent-mid: rgba(42,122,95,0.16); }
+[data-role="Barista"] { --accent: #7B4A22; --accent-bg: rgba(123,74,34,0.08);   --accent-mid: rgba(123,74,34,0.16); }
+[data-role="Chef"]    { --accent: #B83030; --accent-bg: rgba(184,48,48,0.08);   --accent-mid: rgba(184,48,48,0.16); }
+
+/* ─── Reset ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root { display: flex; flex-direction: column; }
+
+/* ─── Input ──────────────────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: 9px 13px;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms;
+  box-shadow: var(--shadow-xs);
+}
+.input::placeholder { color: var(--text-3); }
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg), var(--shadow-xs);
+}
+select.input { cursor: pointer; }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  padding: 0.55em 1.1em;
+  border-radius: 8px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 140ms;
+  white-space: nowrap;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-mid);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--red);
+  border-color: rgba(184,50,50,0.2);
+}
+.btn-danger:hover:not(:disabled) { background: var(--red-bg); }
+
+.btn-surface {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
+}
+.btn-surface:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-lg {
+  padding: 0.7em 1.5em;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* ─── Card ───────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── Badge ──────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.badge-green  { background: var(--green-bg);  color: var(--green); }
+.badge-amber  { background: var(--amber-bg);  color: var(--amber); }
+.badge-red    { background: var(--red-bg);    color: var(--red); }
+.badge-accent { background: var(--accent-bg); color: var(--accent); }
+.badge-muted  { background: var(--surface-2); color: var(--text-3); border: 1px solid var(--border); }
+.badge-blue   { background: var(--blue-bg);   color: var(--blue); }
+
+/* ─── Table ──────────────────────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.data-table th:first-child { border-radius: 8px 0 0 0; }
+.data-table th:last-child  { border-radius: 0 8px 0 0; }
+.data-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover td { background: var(--surface-2); }
+
+/* ─── Divider ────────────────────────────────────────────────────────────────── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+/* ─── Toast ──────────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--text);
+  color: var(--bg);
+  padding: 11px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 360px;
+}
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* ─── Modal overlay ──────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(28,24,20,0.45);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 150ms ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ─── Role pill (sidebar header) ─────────────────────────────────────────────── */
+.role-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-bg);
+  padding: 3px 9px;
+  border-radius: 100px;
+  display: inline-block;
+}
