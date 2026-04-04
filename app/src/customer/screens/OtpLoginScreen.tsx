@@ -113,7 +113,13 @@ export default function OtpLoginScreen() {
       localStorage.setItem('customer_email_for_signin', email);
       setEmailStep('sent');
     } catch (e: any) {
-      setError(e.message?.replace('Firebase: ', '') ?? 'Failed to send link');
+      console.error('sendSignInLinkToEmail error:', e.code, e.message);
+      const msg = e.code === 'auth/operation-not-allowed'
+        ? 'Email link sign-in is not enabled in Firebase Console. Enable it under Authentication → Sign-in method → Email/Password → Email link.'
+        : e.code === 'auth/unauthorized-continue-uri'
+        ? `Domain not authorized in Firebase. Add "${window.location.hostname}" to Firebase Authorized Domains.`
+        : e.message?.replace('Firebase: ', '') ?? 'Failed to send link';
+      setError(msg);
     } finally {
       setLoading(false);
     }
