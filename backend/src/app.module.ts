@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { SeederService } from './database/seeder.service';
 
 import { AuthModule } from './auth/auth.module';
@@ -31,6 +33,7 @@ import { AuditLog } from './audit/entities/audit-log.entity';
 import { Discount } from './discounts/entities/discount.entity';
 
 @Module({
+  controllers: [AppController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
 
@@ -77,6 +80,6 @@ import { Discount } from './discounts/entities/discount.entity';
     AuditModule,
     TypeOrmModule.forFeature([User, Category]),
   ],
-  providers: [SeederService],
+  providers: [AppService, SeederService],
 })
 export class AppModule {}
