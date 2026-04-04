@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, ShoppingBag, ArrowRightLeft, X } from 'lucide-react';
-import { useApp } from '../store/AppContext';
+import { Search, Plus, ShoppingBag, ArrowRightLeft, X, Trash2 } from 'lucide-react';
+import { useApp } from '../store/app-store-context';
 import { ordersApi } from '../api/orders';
 import { tablesApi } from '../api/tables';
 import type { Table, TableStatus } from '../types';
@@ -30,6 +30,7 @@ function TableCard({
   readonly,
   onTransfer,
   onFree,
+  onVoidOrder,
   freeing,
 }: {
   table: Table;
@@ -37,6 +38,7 @@ function TableCard({
   readonly?: boolean;
   onTransfer?: () => void;
   onFree?: () => void;
+  onVoidOrder?: () => void;
   freeing?: boolean;
 }) {
   const s = statusStyle(table.status);
@@ -113,6 +115,15 @@ function TableCard({
                 <ArrowRightLeft size={11} /> Transfer
               </button>
             )}
+            {onVoidOrder && table.currentOrderId && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onVoidOrder(); }}
+                disabled={freeing}
+                style={{ background: 'none', border: '1px solid var(--red)', borderRadius: 6, padding: '3px 8px', cursor: freeing ? 'default' : 'pointer', fontSize: 11, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Trash2 size={11} /> Void Order
+              </button>
+            )}
             {onFree && (
               <button
                 type="button"
@@ -140,7 +151,9 @@ export default function FloorPlanScreen() {
   const [freeingTableId, setFreeingTableId] = useState<string | null>(null);
   const isCashier = user?.role === 'Cashier';
 
-  useEffect(() => { refreshTables(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void refreshTables();
+  }, [refreshTables]);
 
   const filtered = tables
     .filter((t) => t.isActive)

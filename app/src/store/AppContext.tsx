@@ -1,28 +1,10 @@
-import React, { createContext, useContext, useEffect, useReducer, useCallback } from 'react';
+import { useEffect, useReducer, useCallback, type ReactNode } from 'react';
 import type { User, Session, Order, Table, Product, Category, Screen, UserRole } from '../types';
 import { sessionsApi } from '../api/sessions';
 import { productsApi } from '../api/products';
 import { tablesApi } from '../api/tables';
-
-// ─── Role → default screen mapping ───────────────────────────────────────────
-export const ROLE_HOME: Record<UserRole, Screen> = {
-  Admin:    'Dashboard',
-  Manager:  'Dashboard',
-  Cashier:  'CashierQueue',
-  Server:   'FloorPlan',
-  Barista:  'Brewbar',
-  Chef:     'KDS',
-};
-
-// ─── Role → allowed screens ───────────────────────────────────────────────────
-export const ROLE_SCREENS: Record<UserRole, Screen[]> = {
-  Admin:   ['Dashboard', 'FloorPlan', 'Order', 'Payment', 'KDS', 'Brewbar', 'CashierQueue', 'Reporting', 'Settings'],
-  Manager: ['Dashboard', 'FloorPlan', 'Order', 'Payment', 'CashierQueue', 'Reporting'],
-  Cashier: ['CashierQueue', 'FloorPlan', 'Order', 'Payment'],
-  Server:  ['FloorPlan', 'Order'],
-  Barista: ['Brewbar'],
-  Chef:    ['KDS'],
-};
+import { AppContext } from './app-store-context';
+import { ROLE_HOME } from './roleConfig';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 interface AppState {
@@ -72,29 +54,27 @@ function reducer(state: AppState, action: Action): AppState {
   }
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-interface AppContextValue extends AppState {
-  login: (user: User, token: string) => Promise<void>;
-  logout: () => void;
-  navigate: (screen: Screen, params?: Record<string, unknown>) => void;
-  setSession: (session: Session | null) => void;
-  setActiveOrder: (order: Order | null) => void;
-  setActiveTable: (tableId: string | null) => void;
-  refreshTables: () => Promise<void>;
-  refreshProducts: () => Promise<void>;
-  showToast: (message: string) => void;
-}
-
-const AppContext = createContext<AppContextValue | null>(null);
-
 // ─── Role → data-role attribute ──────────────────────────────────────────────
 function applyRoleTheme(role: UserRole | undefined) {
   document.body.setAttribute('data-role', role ?? 'Admin');
 }
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
-export function AppProvider({ children }: { children: React.ReactNode }) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  const loadInitialData = useCallback(async () => {
+    try {
+      const [tablesRes, productsRes, categoriesRes] = await Promise.all([
+        tablesApi.getAll(),
+        productsApi.getAll(),
+        productsApi.getCategories(),
+      ]);
+      dispatch({ type: 'SET_TABLES', payload: tablesRes.data });
+      dispatch({ type: 'SET_PRODUCTS', payload: productsRes.data });
+      dispatch({ type: 'SET_CATEGORIES', payload: categoriesRes.data });
+    } catch { /* silent */ }
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -108,13 +88,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .then((r) => dispatch({ type: 'SET_SESSION', payload: r.data }))
           .catch(() => {});
         dispatch({ type: 'NAVIGATE', payload: { screen: ROLE_HOME[user.role] } });
-        loadInitialData();
+        void loadInitialData();
       } catch {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loadInitialData]);
 
   useEffect(() => {
     if (state.toast) {
@@ -130,19 +110,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 30_000);
     return () => clearInterval(id);
   }, [state.user]);
-
-  const loadInitialData = useCallback(async () => {
-    try {
-      const [tablesRes, productsRes, categoriesRes] = await Promise.all([
-        tablesApi.getAll(),
-        productsApi.getAll(),
-        productsApi.getCategories(),
-      ]);
-      dispatch({ type: 'SET_TABLES',      payload: tablesRes.data });
-      dispatch({ type: 'SET_PRODUCTS',    payload: productsRes.data });
-      dispatch({ type: 'SET_CATEGORIES',  payload: categoriesRes.data });
-    } catch { /* silent */ }
-  }, []);
 
   const login = useCallback(async (user: User, token: string) => {
     localStorage.setItem('token', token);
@@ -198,10 +165,4 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AppContext.Provider>
   );
-}
-
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used inside AppProvider');
-  return ctx;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, UserX, UserCheck } from 'lucide-react';
 import { authApi } from '../../api/auth';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import type { User } from '../../types';
 
 const ROLES = ['Admin', 'Manager', 'Cashier', 'Server', 'Barista', 'Chef'] as const;

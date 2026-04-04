@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { CreditCard, RefreshCw } from 'lucide-react';
-import { useApp } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
 import { ordersApi } from '../api/orders';
 import type { Order } from '../types';
 

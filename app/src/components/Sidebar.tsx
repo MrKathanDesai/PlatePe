@@ -1,6 +1,6 @@
 import { LayoutDashboard, MapPin, ShoppingCart, ChefHat, BarChart2, Settings, LogOut, CreditCard, Coffee } from 'lucide-react';
-import { useApp } from '../store/AppContext';
-import { ROLE_SCREENS } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
+import { ROLE_SCREENS } from '../store/roleConfig';
 import type { Screen, UserRole } from '../types';
 
 const ROLE_LABELS: Record<UserRole, string> = {

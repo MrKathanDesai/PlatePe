@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle, CreditCard, Banknote, Smartphone, ChevronLeft, Users } from 'lucide-react';
-import { useApp } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
 import { paymentsApi } from '../api/payments';
 import { ordersApi } from '../api/orders';
 import type { PaymentMethod } from '../types';

@@ -1,4 +1,4 @@
-import { useApp } from './store/AppContext';
+import { useApp } from './store/app-store-context';
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import FloorPlanScreen from './screens/FloorPlanScreen';

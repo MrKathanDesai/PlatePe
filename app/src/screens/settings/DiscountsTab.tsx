@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { discountsApi } from '../../api/discounts';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import type { Discount } from '../../types';
 
 export default function DiscountsTab() {

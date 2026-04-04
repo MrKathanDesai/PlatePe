@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { authApi } from '../api/auth';
-import { useApp } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
 
 export default function LoginScreen() {
   const { login } = useApp();

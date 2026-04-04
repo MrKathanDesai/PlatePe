@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -15,15 +16,17 @@ import { Server, Socket } from 'socket.io';
   namespace: '/kds',
 })
 export class KDSGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  private readonly logger = new Logger(KDSGateway.name);
+
   @WebSocketServer()
   server: Server;
 
   handleConnection(client: Socket) {
-    console.log(`KDS client connected: ${client.id}`);
+    this.logger.debug(`KDS client connected: ${client.id}`);
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`KDS client disconnected: ${client.id}`);
+    this.logger.debug(`KDS client disconnected: ${client.id}`);
   }
 
   /**

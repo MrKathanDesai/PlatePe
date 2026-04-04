@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Plus, Minus, Trash2, Ban, ChevronRight, Tag, Send, Search, X, Check } from 'lucide-react';
-import { useApp } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
 import { ordersApi } from '../api/orders';
 import { discountsApi } from '../api/discounts';
 import type { Order, OrderItem, Product, Discount, Modifier } from '../types';

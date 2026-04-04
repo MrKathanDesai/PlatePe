@@ -217,6 +217,13 @@ export interface HourlyHeatmap {
   revenue: number;
 }
 
+export interface TableTurnoverReport {
+  tableId: string;
+  tableName: string;
+  turnovers: number;
+  avgMinutes: number;
+}
+
 export interface AuditLog {
   id: string;
   actorId: string | null;

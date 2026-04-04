@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Plus, Pencil, Trash2, X, Upload, AlertCircle, CheckCircle2, FileText } from 'lucide-react';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import { productsApi } from '../../api/products';
 import type { Product, Category, Modifier } from '../../types';
 

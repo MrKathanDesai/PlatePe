@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ChefHat, LogOut, Clock } from 'lucide-react';
 import { kdsApi, getKDSSocket } from '../api/kds';
-import { useApp } from '../store/AppContext';
+import { useApp } from '../store/app-store-context';
 import type { KDSTicket } from '../types';
 
 function minutesSince(dateStr: string) {

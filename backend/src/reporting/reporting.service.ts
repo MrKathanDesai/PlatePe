@@ -6,6 +6,7 @@ import { OrderLineItem } from '../orders/entities/order-line-item.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { Session } from '../sessions/entities/session.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
+import { Table } from '../tables/entities/table.entity';
 
 @Injectable()
 export class ReportingService {
@@ -222,21 +223,25 @@ export class ReportingService {
       this.orderRepo.createQueryBuilder('o'),
       'o',
     )
+      .leftJoin(Table, 't', 't.id::text = o.tableId')
       .where("o.status = 'Paid'")
       .andWhere('o.tableId IS NOT NULL')
       .andWhere('paid."paidAt" >= :from', { from: fromTs })
       .andWhere('paid."paidAt" <= :to', { to: toTs })
       .select([
         'o.tableId AS "tableId"',
+        'COALESCE(t.number, o.tableId) AS "tableName"',
         'COUNT(o.id) AS "turnovers"',
         'AVG(EXTRACT(EPOCH FROM (paid."paidAt" - o.createdAt)) / 60) AS "avgMinutes"',
       ])
       .groupBy('o.tableId')
+      .addGroupBy('t.number')
       .orderBy('turnovers', 'DESC')
       .getRawMany();
 
     return result.map((row: Record<string, unknown>) => ({
       tableId: String(row.tableId ?? row.tableid ?? ''),
+      tableName: String(row.tableName ?? row.tablename ?? row.tableId ?? row.tableid ?? ''),
       turnovers: this.toNumber(row.turnovers),
       avgMinutes: this.toNumber(row.avgMinutes ?? row.avgminutes),
     }));

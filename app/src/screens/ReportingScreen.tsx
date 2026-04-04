@@ -3,7 +3,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { reportsApi } from '../api/reports';
 import { sessionsApi } from '../api/sessions';
 import { getKDSSocket } from '../api/kds';
-import type { DailyReport, ProductReport, AuditLog, HourlyHeatmap, Session } from '../types';
+import type { DailyReport, ProductReport, AuditLog, HourlyHeatmap, Session, TableTurnoverReport } from '../types';
 
 type Tab = 'Daily' | 'Products' | 'Audit' | 'Sessions' | 'Heatmap' | 'Turnover';
 type ReportRange = 'today' | '7d' | '30d';
@@ -72,12 +72,20 @@ function DailyTab({ range }: { range: ReportRange }) {
   const [rows, setRows] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchRows = useCallback(() => {
-    setLoading(true);
-    reportsApi.daily(getRangeParams(range)).then((r) => setRows(r.data)).catch(() => {}).finally(() => setLoading(false));
+  const fetchRows = useCallback(async () => {
+    try {
+      const r = await reportsApi.daily(getRangeParams(range));
+      setRows(r.data);
+    } catch {
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
   }, [range]);
 
-  useEffect(() => { fetchRows(); }, [fetchRows]);
+  useEffect(() => {
+    void fetchRows();
+  }, [fetchRows]);
 
   useEffect(() => {
     const socket = getKDSSocket();
@@ -144,10 +152,25 @@ function DailyTab({ range }: { range: ReportRange }) {
 function ProductsTab({ range }: { range: ReportRange }) {
   const [products, setProducts] = useState<ProductReport[]>([]);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    setLoading(true);
-    reportsApi.products(getRangeParams(range)).then((r) => setProducts(r.data)).catch(() => {}).finally(() => setLoading(false));
+    let cancelled = false;
+
+    const loadProducts = async () => {
+      try {
+        const r = await reportsApi.products(getRangeParams(range));
+        if (!cancelled) setProducts(r.data);
+      } catch {
+        if (!cancelled) setProducts([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadProducts();
+    return () => { cancelled = true; };
   }, [range]);
+
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   const maxRev = Math.max(...products.map((p) => p.revenue), 1);
   return (
@@ -226,10 +249,25 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function HeatmapTab({ range }: { range: ReportRange }) {
   const [data, setData] = useState<HourlyHeatmap[]>([]);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    setLoading(true);
-    reportsApi.hourlyHeatmap(getRangeParams(range)).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+    let cancelled = false;
+
+    const loadHeatmap = async () => {
+      try {
+        const r = await reportsApi.hourlyHeatmap(getRangeParams(range));
+        if (!cancelled) setData(r.data);
+      } catch {
+        if (!cancelled) setData([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadHeatmap();
+    return () => { cancelled = true; };
   }, [range]);
+
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   const maxCount = Math.max(...data.map((d) => d.orderCount), 1);
   // Build a 7×48 grid (day × 30-min slot)
@@ -358,12 +396,27 @@ function SessionsTab() {
 }
 
 function TurnoverTab({ range }: { range: ReportRange }) {
-  const [data, setData] = useState<{ tableId: string; turnovers: number; avgMinutes: number }[]>([]);
+  const [data, setData] = useState<TableTurnoverReport[]>([]);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    setLoading(true);
-    reportsApi.tableTurnover(getRangeParams(range)).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+    let cancelled = false;
+
+    const loadTurnover = async () => {
+      try {
+        const r = await reportsApi.tableTurnover(getRangeParams(range));
+        if (!cancelled) setData(r.data);
+      } catch {
+        if (!cancelled) setData([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadTurnover();
+    return () => { cancelled = true; };
   }, [range]);
+
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -372,7 +425,9 @@ function TurnoverTab({ range }: { range: ReportRange }) {
         <tbody>
           {data.map((row) => (
             <tr key={row.tableId}>
-              <td style={{ fontWeight: 600 }}>{row.tableId}</td>
+              <td style={{ fontWeight: 600 }}>
+                {row.tableName && row.tableName !== row.tableId ? row.tableName : row.tableId}
+              </td>
               <td style={{ textAlign: 'right', color: 'var(--accent)', fontWeight: 700 }}>{row.turnovers}</td>
               <td style={{ textAlign: 'right', color: 'var(--text-3)', fontSize: 12 }}>{Math.round(row.avgMinutes)} min</td>
             </tr>
@@ -411,12 +466,12 @@ export default function ReportingScreen() {
           ))}
         </div>
       )}
-      {tab === 'Daily'    && <DailyTab range={range} />}
-      {tab === 'Products' && <ProductsTab range={range} />}
+      {tab === 'Daily'    && <DailyTab key={`daily-${range}`} range={range} />}
+      {tab === 'Products' && <ProductsTab key={`products-${range}`} range={range} />}
       {tab === 'Audit'    && <AuditTab />}
       {tab === 'Sessions' && <SessionsTab />}
-      {tab === 'Heatmap'  && <HeatmapTab range={range} />}
-      {tab === 'Turnover' && <TurnoverTab range={range} />}
+      {tab === 'Heatmap'  && <HeatmapTab key={`heatmap-${range}`} range={range} />}
+      {tab === 'Turnover' && <TurnoverTab key={`turnover-${range}`} range={range} />}
     </div>
   );
 }

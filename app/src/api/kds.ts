@@ -24,10 +24,14 @@ let socket: Socket | null = null;
 export function getKDSSocket(): Socket {
   if (!socket) {
     const token = localStorage.getItem('token');
+    // In production, connect directly to the Render backend.
+    // In development, use the current origin (Vite proxies /socket.io).
+    const serverUrl = import.meta.env.VITE_API_URL || window.location.origin;
     socket = io('/kds', {
       path: '/socket.io',
       auth: { token },
       transports: ['websocket'],
+      ...(import.meta.env.VITE_API_URL ? { host: serverUrl } : {}),
     });
   }
   return socket;

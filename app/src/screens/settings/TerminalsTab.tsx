@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Monitor } from 'lucide-react';
 import { sessionsApi } from '../../api/sessions';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import type { Terminal } from '../../types';
 
 export default function TerminalsTab() {

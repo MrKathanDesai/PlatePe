@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import { tablesApi } from '../../api/tables';
 
 export default function TablesTab() {

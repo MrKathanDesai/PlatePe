@@ -1,5 +1,5 @@
 import client from './client';
-import type { DailyReport, ProductReport, HourlyHeatmap, AuditLog, Session } from '../types';
+import type { DailyReport, ProductReport, HourlyHeatmap, AuditLog, Session, TableTurnoverReport } from '../types';
 
 export const reportsApi = {
   daily: (params?: { from?: string; to?: string }) =>
@@ -26,6 +26,6 @@ export const reportsApi = {
     }>(`/reports/session/${sessionId}`),
 
   tableTurnover: (params?: { from?: string; to?: string }) =>
-    client.get<{ tableId: string; turnovers: number; avgMinutes: number }[]>(
+    client.get<TableTurnoverReport[]>(
       '/reports/table-turnover', { params }),
 };

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory';
-import { useApp } from '../../store/AppContext';
+import { useApp } from '../../store/app-store-context';
 import type { InventoryItem } from '../../types';
 
 export default function InventoryTab() {
