@@ -134,7 +134,7 @@ function CustomerShell({ tableId }: { tableId: string | null }) {
       <div style={promptStyles.page}>
         <div style={{ textAlign: 'center' }}>
           <div style={promptStyles.spinner} />
-          <p style={{ color: '#5C5650', fontSize: 14, marginTop: 16, fontFamily: 'system-ui' }}>
+          <p style={{ color: 'var(--text-2)', fontSize: 14, marginTop: 16, fontFamily: 'system-ui' }}>
             Signing you in…
           </p>
         </div>
@@ -193,7 +193,7 @@ const promptStyles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '24px 16px',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
   },
   card: {
     background: '#fff',
@@ -205,35 +205,35 @@ const promptStyles: Record<string, React.CSSProperties> = {
   },
   logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 },
   logoText: {
-    fontFamily: "'Fraunces', Georgia, serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 24,
     fontWeight: 600,
-    color: '#C4622D',
+    color: 'var(--accent)',
   },
   heading: {
-    fontFamily: "'Fraunces', Georgia, serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 22,
     fontWeight: 600,
-    color: '#1C1814',
+    color: 'var(--text)',
     margin: '0 0 8px',
   },
-  sub: { fontSize: 14, color: '#5C5650', margin: '0 0 20px', lineHeight: 1.5 },
+  sub: { fontSize: 14, color: 'var(--text-2)', margin: '0 0 20px', lineHeight: 1.5 },
   input: {
     width: '100%',
     border: '1.5px solid #DDD8D0',
     borderRadius: 12,
     padding: '12px 14px',
     fontSize: 15,
-    color: '#1C1814',
+    color: 'var(--text)',
     background: '#FAFAF8',
     outline: 'none',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
     boxSizing: 'border-box',
     marginBottom: 12,
   },
   btn: {
     width: '100%',
-    background: '#C4622D',
+    background: 'var(--accent)',
     color: '#fff',
     border: 'none',
     borderRadius: 12,
@@ -241,10 +241,10 @@ const promptStyles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     fontWeight: 600,
     cursor: 'pointer',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
   },
   error: {
-    color: '#B83232',
+    color: 'var(--red)',
     fontSize: 13,
     padding: '8px 12px',
     background: 'rgba(184,50,50,0.07)',
@@ -255,7 +255,7 @@ const promptStyles: Record<string, React.CSSProperties> = {
     width: 36,
     height: 36,
     border: '3px solid #DDD8D0',
-    borderTopColor: '#C4622D',
+    borderTopColor: 'var(--accent)',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
     margin: '0 auto',

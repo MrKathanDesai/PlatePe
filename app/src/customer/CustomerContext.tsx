@@ -90,6 +90,10 @@ export function CustomerProvider({ children, tableId }: { children: React.ReactN
     setToken(null);
     setCustomer(null);
     setCart([]);
+    setOrderId(null);
+    setOrderNumber(null);
+    setOrderStatus(null);
+    setOrderTotal(null);
     setScreen('login');
   }, []);
 

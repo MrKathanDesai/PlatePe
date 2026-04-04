@@ -102,7 +102,7 @@ function ProductModal({ product, categories, onSave, onClose }: {
         <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>
           <X size={18} />
         </button>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 400, color: 'var(--text)', margin: '0 0 20px', letterSpacing: '-0.02em' }}>
+        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 400, color: 'var(--text)', margin: '0 0 20px', letterSpacing: '-0.04em' }}>
           {product ? 'Edit Product' : 'Add Product'}
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -223,7 +223,7 @@ function CSVImportModal({ onImported, onClose }: {
           <X size={18} />
         </button>
 
-        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 400, color: 'var(--text)', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+        <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 400, color: 'var(--text)', margin: '0 0 6px', letterSpacing: '-0.04em' }}>
           Import Products
         </h2>
         <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 20px' }}>
@@ -336,7 +336,7 @@ function CSVImportModal({ onImported, onClose }: {
         {step === 'done' && (
           <div style={{ padding: '24px 0', textAlign: 'center' }}>
             <CheckCircle2 size={48} color="var(--green)" style={{ margin: '0 auto 16px', display: 'block' }} />
-            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 6, fontFamily: 'var(--font-display)' }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text)', marginBottom: 6, fontFamily: 'var(--font-ui)' }}>
               Import complete
             </div>
             <div style={{ fontSize: 14, color: 'var(--text-3)', marginBottom: 20 }}>
@@ -476,7 +476,7 @@ export default function ProductsTab() {
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                  <span>{c.station === 'BREWBAR' ? '☕' : '🍳'}</span>
+                  <span>{c.station === 'BREWBAR' ? 'Brew' : 'Kitchen'}</span>
                   <span>{c.name}</span>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
@@ -577,10 +577,13 @@ export default function ProductsTab() {
                   <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{cat?.name ?? '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--accent)' }}>₹{Number(product.price).toFixed(0)}</td>
                   <td>
-                    <button onClick={() => toggle86(product)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      <span className={`badge ${product.is86d ? 'badge-red' : 'badge-green'}`}>
-                        {product.is86d ? '86\'d' : 'Available'}
-                      </span>
+                    <button
+                      onClick={() => toggle86(product)}
+                      className={`btn ${product.is86d ? 'btn-danger' : 'btn-ghost'}`}
+                      style={{ fontSize: 11, padding: '3px 10px', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}
+                      title={product.is86d ? 'Click to restore availability' : "Click to mark 86'd (unavailable)"}
+                    >
+                      {product.is86d ? '86\'d — unavailable' : 'Available'}
                     </button>
                   </td>
                   <td>

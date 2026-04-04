@@ -18,6 +18,7 @@ interface AppState {
   screen: Screen;
   screenParams: Record<string, unknown>;
   toast: { message: string; id: number } | null;
+  theme: 'light' | 'dark';
 }
 
 type Action =
@@ -30,12 +31,16 @@ type Action =
   | { type: 'SET_CATEGORIES'; payload: Category[] }
   | { type: 'NAVIGATE'; payload: { screen: Screen; params?: Record<string, unknown> } }
   | { type: 'SHOW_TOAST'; payload: string }
-  | { type: 'CLEAR_TOAST' };
+  | { type: 'CLEAR_TOAST' }
+  | { type: 'TOGGLE_THEME' };
+
+const savedTheme = (localStorage.getItem('theme') as 'light' | 'dark') ?? 'light';
 
 const initialState: AppState = {
   user: null, session: null, activeOrder: null, activeTableId: null,
   tables: [], products: [], categories: [],
   screen: 'Login', screenParams: {}, toast: null,
+  theme: savedTheme,
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -50,6 +55,12 @@ function reducer(state: AppState, action: Action): AppState {
     case 'NAVIGATE':         return { ...state, screen: action.payload.screen, screenParams: action.payload.params ?? {} };
     case 'SHOW_TOAST':       return { ...state, toast: { message: action.payload, id: Date.now() } };
     case 'CLEAR_TOAST':      return { ...state, toast: null };
+    case 'TOGGLE_THEME': {
+      const next = state.theme === 'light' ? 'dark' : 'light';
+      localStorage.setItem('theme', next);
+      document.documentElement.setAttribute('data-theme', next);
+      return { ...state, theme: next };
+    }
     default: return state;
   }
 }
@@ -59,9 +70,19 @@ function applyRoleTheme(role: UserRole | undefined) {
   document.body.setAttribute('data-role', role ?? 'Admin');
 }
 
+function applyTheme(theme: 'light' | 'dark') {
+  document.documentElement.setAttribute('data-theme', theme);
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  // Apply saved theme on mount
+  useEffect(() => {
+    applyTheme(state.theme);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -154,13 +175,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const showToast = useCallback((msg: string) => dispatch({ type: 'SHOW_TOAST', payload: msg }), []);
+  const toggleTheme = useCallback(() => dispatch({ type: 'TOGGLE_THEME' }), []);
 
   return (
     <AppContext.Provider value={{
       ...state,
       login, logout, navigate,
       setSession, setActiveOrder, setActiveTable,
-      refreshTables, refreshProducts, showToast,
+      refreshTables, refreshProducts, showToast, toggleTheme,
     }}>
       {children}
     </AppContext.Provider>

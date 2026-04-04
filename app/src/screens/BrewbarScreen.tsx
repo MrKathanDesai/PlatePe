@@ -188,7 +188,7 @@ export default function BrewbarScreen() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <Coffee size={20} color="var(--accent)" />
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 400, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 400, color: 'var(--text)', letterSpacing: '-0.04em' }}>
             Brewbar
           </span>
           <span style={{
@@ -198,7 +198,7 @@ export default function BrewbarScreen() {
           }}>{connected ? 'LIVE' : 'OFFLINE'}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 300, color: 'var(--accent)' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700, color: 'var(--accent)' }}>
             {allActive.length} active
           </span>
           <span style={{ fontSize: 13, color: 'var(--text-3)' }}>{user?.name}</span>
@@ -236,7 +236,7 @@ export default function BrewbarScreen() {
             </div>
             {col.tickets.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '32px 0', fontSize: 13 }}>
-                {col.title === 'To Brew' ? 'All caught up ☕' : '—'}
+                {col.title === 'To Brew' ? 'All caught up' : '—'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

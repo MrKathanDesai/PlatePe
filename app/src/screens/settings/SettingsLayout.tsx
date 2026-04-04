@@ -14,7 +14,7 @@ export default function SettingsLayout() {
 
   return (
     <div style={{ padding: 32, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 300, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.02em' }}>
+      <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.04em' }}>
         Settings
       </h1>
 

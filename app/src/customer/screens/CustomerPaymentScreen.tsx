@@ -4,6 +4,7 @@ import {
   CheckCircle,
   ChevronLeft,
   CreditCard,
+  LogOut,
   Smartphone,
 } from 'lucide-react';
 import { customerApi, type CustomerPaymentMethod } from '../api/customerApi';
@@ -28,7 +29,7 @@ const METHOD_OPTIONS: Array<{
   },
   {
     method: 'DIGITAL',
-    label: 'Credit Card',
+    label: 'Card',
     description: 'Use the card terminal, then confirm here.',
     icon: CreditCard,
   },
@@ -48,6 +49,7 @@ export default function CustomerPaymentScreen() {
     setScreen,
     setOrderStatus,
     clearCart,
+    logout,
     tableNumber,
   } = useCustomer();
   const [method, setMethod] = useState<CustomerPaymentMethod>('UPI');
@@ -62,15 +64,13 @@ export default function CustomerPaymentScreen() {
   const upiIntentUrl = useMemo(() => {
     if (!orderNumber) return null;
     return buildUpiIntentUrl(
-      {
-        amount: Number(orderTotal ?? 0),
-        orderNumber,
-        tableNumber,
-      },
+      { amount: Number(orderTotal ?? 0), orderNumber, tableNumber },
       upiConfig,
     );
   }, [orderNumber, orderTotal, tableNumber, upiConfig]);
+
   const upiConfigMissing = !upiConfig.vpa || !upiConfig.payeeName;
+
   const confirmButtonLabel = method === 'UPI'
     ? `Mark UPI Paid · ₹${Number(orderTotal ?? 0).toFixed(2)}`
     : method === 'DIGITAL'
@@ -79,45 +79,30 @@ export default function CustomerPaymentScreen() {
 
   useEffect(() => {
     let cancelled = false;
-
     if (method !== 'UPI' || !upiIntentUrl) {
       setUpiQrDataUrl(null);
       setUpiQrError('');
-      return () => {
-        cancelled = true;
-      };
+      return () => { cancelled = true; };
     }
-
     setUpiQrError('');
     generateUpiQrDataUrl(upiIntentUrl)
-      .then((dataUrl) => {
-        if (!cancelled) setUpiQrDataUrl(dataUrl);
-      })
+      .then((dataUrl) => { if (!cancelled) setUpiQrDataUrl(dataUrl); })
       .catch(() => {
-        if (!cancelled) {
-          setUpiQrDataUrl(null);
-          setUpiQrError('Could not generate the UPI QR right now.');
-        }
+        if (!cancelled) { setUpiQrDataUrl(null); setUpiQrError('Could not generate the UPI QR right now.'); }
       });
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [method, upiIntentUrl]);
 
   async function handlePay() {
     if (!orderId) return;
-
     setLoading(true);
     setError('');
-
     try {
       const result = await customerApi.payOrder({
         orderId,
         method,
         upiRef: method === 'UPI' ? (upiRef.trim() || undefined) : undefined,
       });
-
       clearCart();
       setOrderStatus(result.orderStatus);
       setSuccess(true);
@@ -131,170 +116,202 @@ export default function CustomerPaymentScreen() {
 
   if (success) {
     return (
-      <div style={styles.page}>
-        <div style={styles.successBox}>
-          <div style={styles.successBadge}>
-            <CheckCircle size={38} color="#276749" />
+      <div style={s.page}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 'var(--radius)', background: 'var(--green-bg)', border: '1.5px solid var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+            <CheckCircle size={32} color="var(--green)" />
           </div>
-          <h2 style={styles.successTitle}>Payment recorded</h2>
-          <p style={styles.successSub}>Your order has been marked as paid.</p>
+          <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: '0 0 8px', letterSpacing: '-0.03em' }}>
+            Payment recorded
+          </h2>
+          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
+            Your order has been marked as paid.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <button style={styles.backBtn} onClick={() => setScreen('status')}>
+    <div style={s.page}>
+      {/* Header */}
+      <header style={s.header}>
+        <button style={s.backBtn} onClick={() => setScreen('status')}>
           <ChevronLeft size={16} /> Back
         </button>
-        <span style={styles.brand}>PlatePe</span>
-        <span style={styles.headerSpacer} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.04em' }}>
+            plate<span style={{ color: 'var(--accent)' }}>pe</span>
+          </span>
+          {tableNumber && (
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, padding: '2px 8px', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-2)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Table {tableNumber}
+            </span>
+          )}
+        </div>
+        <button style={s.logoutBtn} onClick={logout}>
+          <LogOut size={13} /> Out
+        </button>
       </header>
 
-      <div style={styles.content}>
-        <div style={styles.card}>
-          <h2 style={styles.heading}>Settle Bill</h2>
+      {/* Content */}
+      <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' }}>
+        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '24px 20px', boxShadow: 'var(--shadow-hard)' }}>
+          <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: '0 0 20px', letterSpacing: '-0.04em' }}>
+            Settle Bill
+          </h2>
 
+          {/* Order info rows */}
           {tableNumber && (
-            <div style={styles.tableRow}>
-              <span style={styles.tableLabel}>Table</span>
-              <span style={styles.tableVal}>{tableNumber}</span>
+            <div style={s.infoRow}>
+              <span style={s.infoLabel}>Table</span>
+              <span style={s.infoVal}>{tableNumber}</span>
             </div>
           )}
-
-          <div style={styles.tableRow}>
-            <span style={styles.tableLabel}>Order</span>
-            <span style={styles.tableVal}>{orderNumber}</span>
+          <div style={s.infoRow}>
+            <span style={s.infoLabel}>Order</span>
+            <span style={{ ...s.infoVal, fontFamily: 'var(--font-mono)' }}>{orderNumber}</span>
           </div>
 
-          <div style={styles.divider} />
+          <hr style={{ border: 'none', borderTop: '1.5px solid var(--border)', margin: '12px 0 16px' }} />
 
-          <div style={styles.totalRow}>
-            <span style={styles.totalLabel}>Total Amount</span>
-            <span style={styles.totalAmount}>₹{Number(orderTotal ?? 0).toFixed(2)}</span>
+          {/* Total */}
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 22 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Total</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 30, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+              ₹{Number(orderTotal ?? 0).toFixed(2)}
+            </span>
           </div>
 
-          <div style={styles.methods}>
+          {/* Payment method selector */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
             {METHOD_OPTIONS.map(({ method: value, label, description, icon: Icon }) => {
               const selected = method === value;
               return (
                 <button
                   key={value}
                   type="button"
-                  style={{
-                    ...styles.methodButton,
-                    borderColor: selected ? '#C4622D' : '#EAE4DB',
-                    background: selected ? '#FFF5EE' : '#fff',
-                  }}
                   onClick={() => setMethod(value)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                    border: selected ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
+                    borderRadius: 'var(--radius)',
+                    padding: '12px 14px',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    background: selected ? 'var(--accent-bg)' : 'var(--bg)',
+                    transition: 'all 100ms',
+                    boxShadow: selected ? 'var(--shadow-hard-sm)' : 'none',
+                  }}
                 >
                   <div style={{
-                    ...styles.methodIconWrap,
-                    background: selected ? '#C4622D' : '#F3EFE8',
-                    color: selected ? '#fff' : '#5C5650',
-                  }}
-                  >
-                    <Icon size={18} />
+                    width: 36, height: 36, borderRadius: 'var(--radius)',
+                    background: selected ? 'var(--accent)' : 'var(--surface-2)',
+                    border: selected ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: selected ? '#fff' : 'var(--text-2)',
+                    flexShrink: 0,
+                  }}>
+                    <Icon size={16} />
                   </div>
-                  <div style={styles.methodCopy}>
-                    <span style={styles.methodLabel}>{label}</span>
-                    <span style={styles.methodDescription}>{description}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontFamily: 'var(--font-ui)', fontSize: 14, fontWeight: 600, color: selected ? 'var(--accent)' : 'var(--text)' }}>{label}</span>
+                    <span style={{ fontFamily: 'var(--font-ui)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>{description}</span>
                   </div>
                 </button>
               );
             })}
           </div>
 
+          {/* UPI panel */}
           {method === 'UPI' && (
-            <div style={styles.methodPanel}>
-              <div style={styles.upiPillRow}>
+            <div style={{ borderRadius: 'var(--radius)', background: 'var(--surface-2)', border: '1.5px solid var(--border)', padding: '16px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
                 {['GPay', 'PhonePe', 'Paytm', 'BHIM'].map((app) => (
-                  <span key={app} style={styles.upiPill}>{app}</span>
+                  <span key={app} style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, padding: '3px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-2)', letterSpacing: '0.06em' }}>
+                    {app}
+                  </span>
                 ))}
               </div>
 
               {upiIntentUrl ? (
-                <div style={styles.upiBox}>
+                <div style={{ textAlign: 'center' }}>
                   {upiQrDataUrl ? (
-                    <img
-                      src={upiQrDataUrl}
-                      alt={`UPI QR for ₹${Number(orderTotal ?? 0).toFixed(2)}`}
-                      style={styles.upiQr}
-                    />
+                    <img src={upiQrDataUrl} alt={`UPI QR ₹${Number(orderTotal ?? 0).toFixed(2)}`}
+                      style={{ width: 168, height: 168, objectFit: 'contain', margin: '0 auto 10px', borderRadius: 'var(--radius)', border: '1.5px solid var(--border)', background: '#fff', padding: 8, display: 'block' }} />
                   ) : (
-                    <div style={styles.upiQrPlaceholder}>Generating QR…</div>
+                    <div style={{ width: 168, height: 168, margin: '0 auto 10px', borderRadius: 'var(--radius)', border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--text-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                      Generating QR…
+                    </div>
                   )}
-
-                  <p style={styles.upiHint}>
-                    Scan the QR or open a UPI app to pay ₹{Number(orderTotal ?? 0).toFixed(2)}.
+                  <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-3)', margin: '0 0 4px' }}>
+                    Scan to pay ₹{Number(orderTotal ?? 0).toFixed(2)}
                   </p>
-                  <p style={styles.upiMeta}>
-                    VPA: <strong>{upiConfig.vpa}</strong>
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)', margin: '0 0 12px' }}>
+                    {upiConfig.vpa}
                   </p>
-
-                  <a href={upiIntentUrl} style={styles.upiLink}>
-                    <Smartphone size={14} /> Open in UPI App
+                  <a href={upiIntentUrl} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 16px', borderRadius: 'var(--radius)', background: 'var(--accent-bg)', border: '1.5px solid var(--accent-mid)', color: 'var(--accent)', textDecoration: 'none', fontSize: 13, fontWeight: 600, boxSizing: 'border-box', width: '100%', marginBottom: 12, fontFamily: 'var(--font-ui)' }}>
+                    <Smartphone size={13} /> Open UPI App
                   </a>
                 </div>
               ) : (
-                <div style={styles.warningBox}>
-                  Configure `VITE_UPI_VPA` and `VITE_UPI_PAYEE_NAME` to enable a real UPI QR and deep link.
+                <div style={{ fontSize: 12, color: 'var(--amber)', lineHeight: 1.5, marginBottom: 12 }}>
+                  Configure VITE_UPI_VPA and VITE_UPI_PAYEE_NAME to enable UPI QR.
                 </div>
               )}
 
               {upiQrError && (
-                <div style={styles.errorBox}>{upiQrError}</div>
+                <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: 'var(--radius)', padding: '8px 10px', fontSize: 12, color: 'var(--red)', marginBottom: 10 }}>
+                  {upiQrError}
+                </div>
               )}
 
               <div>
-                <label style={styles.inputLabel}>UPI Ref / UTR (Optional)</label>
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="Enter UPI reference after payment"
-                  value={upiRef}
-                  onChange={(event) => setUpiRef(event.target.value)}
-                />
+                <label style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', marginBottom: 6, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  UPI Ref / UTR (Optional)
+                </label>
+                <input className="input" type="text" placeholder="Enter UPI reference" value={upiRef} onChange={(e) => setUpiRef(e.target.value)} />
               </div>
 
               {upiConfigMissing && (
-                <p style={styles.methodNote}>
-                  Until the UPI env vars are configured, you can still record the payment manually.
+                <p style={{ fontFamily: 'var(--font-ui)', fontSize: 12, color: 'var(--text-3)', margin: '10px 0 0', lineHeight: 1.5 }}>
+                  UPI env vars not configured — you can still record the payment manually.
                 </p>
               )}
             </div>
           )}
 
           {method === 'DIGITAL' && (
-            <div style={styles.methodPanel}>
-              <p style={styles.methodNote}>
-                Run the card on your terminal first, then tap confirm here to mark the order paid.
+            <div style={{ borderRadius: 'var(--radius)', background: 'var(--surface-2)', border: '1.5px solid var(--border)', padding: '14px 16px', marginBottom: 16 }}>
+              <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
+                Run the card on the terminal, then tap confirm below to mark the order as paid.
               </p>
             </div>
           )}
 
           {method === 'CASH' && (
-            <div style={styles.methodPanel}>
-              <p style={styles.methodNote}>
-                Collect the cash at the table or counter, then confirm below to close the bill.
+            <div style={{ borderRadius: 'var(--radius)', background: 'var(--surface-2)', border: '1.5px solid var(--border)', padding: '14px 16px', marginBottom: 16 }}>
+              <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
+                Collect cash at the table or counter, then confirm below to close the bill.
               </p>
             </div>
           )}
 
-          {error && <p style={styles.error}>{error}</p>}
+          {error && (
+            <p style={{ color: 'var(--red)', fontFamily: 'var(--font-ui)', fontSize: 13, margin: '0 0 14px', textAlign: 'center' }}>{error}</p>
+          )}
 
           <button
-            style={{ ...styles.payBtn, opacity: loading ? 0.65 : 1 }}
+            className="btn btn-primary btn-lg"
             onClick={handlePay}
             disabled={loading}
+            style={{ width: '100%' }}
           >
-            {loading ? 'Confirming Payment…' : confirmButtonLabel}
+            {loading ? 'Confirming…' : confirmButtonLabel}
           </button>
 
-          <p style={styles.secureNote}>
-            This is the separate bill step. Your order was already sent to the kitchen earlier.
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', textAlign: 'center', margin: '12px 0 0', letterSpacing: '0.04em' }}>
+            Your order was already sent to the kitchen.
           </p>
         </div>
       </div>
@@ -302,304 +319,50 @@ export default function CustomerPaymentScreen() {
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100dvh',
-    background: '#F8F6F2',
+    background: 'var(--bg)',
     display: 'flex',
     flexDirection: 'column',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: 'var(--font-ui)',
     maxWidth: 480,
     margin: '0 auto',
   },
   header: {
-    background: '#fff',
-    padding: '14px 20px',
-    borderBottom: '1px solid #EAE4DB',
+    background: 'var(--surface)',
+    padding: '14px 18px',
+    borderBottom: '1.5px solid var(--border)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    boxShadow: 'var(--shadow-hard-sm)',
   },
   backBtn: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    background: 'none',
-    border: 'none',
-    color: '#C4622D',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    padding: 0,
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    background: 'none', border: 'none',
+    color: 'var(--accent)', fontSize: 14, fontWeight: 600,
+    cursor: 'pointer', padding: 0,
+    fontFamily: 'var(--font-ui)',
   },
-  brand: {
-    fontFamily: "'Fraunces', Georgia, serif",
-    fontSize: 22,
-    fontWeight: 600,
-    color: '#C4622D',
+  logoutBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    background: 'var(--surface-2)', border: '1.5px solid var(--border)',
+    color: 'var(--text-2)', borderRadius: 'var(--radius)',
+    padding: '5px 9px', fontSize: 11, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'var(--font-mono)',
+    letterSpacing: '0.04em',
   },
-  headerSpacer: { width: 44 },
-  content: {
-    flex: 1,
-    padding: '24px 16px',
+  infoRow: {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '8px 0', borderBottom: '1px solid var(--border)',
   },
-  card: {
-    background: '#fff',
-    borderRadius: 20,
-    padding: '28px 24px',
-    boxShadow: '0 2px 8px rgba(28,24,20,0.07)',
+  infoLabel: {
+    fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-3)',
+    letterSpacing: '0.06em', textTransform: 'uppercase' as const,
   },
-  heading: {
-    fontFamily: "'Fraunces', Georgia, serif",
-    fontSize: 24,
-    fontWeight: 600,
-    color: '#1C1814',
-    margin: '0 0 24px',
-    letterSpacing: '-0.02em',
-  },
-  tableRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '10px 0',
-    borderBottom: '1px solid #F3EFE8',
-  },
-  tableLabel: {
-    fontSize: 14,
-    color: '#5C5650',
-  },
-  tableVal: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#1C1814',
-  },
-  divider: {
-    height: 1,
-    background: '#EAE4DB',
-    margin: '4px 0 16px',
-  },
-  totalRow: {
-    display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  totalLabel: {
-    fontSize: 14,
-    color: '#5C5650',
-  },
-  totalAmount: {
-    fontSize: 28,
-    fontWeight: 700,
-    color: '#1C1814',
-  },
-  methods: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  methodButton: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    width: '100%',
-    border: '1px solid #EAE4DB',
-    borderRadius: 16,
-    padding: '14px 16px',
-    cursor: 'pointer',
-    textAlign: 'left',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-  },
-  methodIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  methodCopy: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-  },
-  methodLabel: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#1C1814',
-  },
-  methodDescription: {
-    fontSize: 12,
-    color: '#5C5650',
-    lineHeight: 1.45,
-  },
-  methodPanel: {
-    marginTop: 16,
-    borderRadius: 16,
-    background: '#FCFAF7',
-    border: '1px solid #F0E8DE',
-    padding: '16px 16px 14px',
-  },
-  methodNote: {
-    margin: 0,
-    fontSize: 13,
-    lineHeight: 1.6,
-    color: '#5C5650',
-  },
-  upiPillRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 14,
-  },
-  upiPill: {
-    borderRadius: 999,
-    padding: '6px 10px',
-    background: '#F3EFE8',
-    color: '#5C5650',
-    fontSize: 11,
-    fontWeight: 600,
-  },
-  upiBox: {
-    textAlign: 'center',
-  },
-  upiQr: {
-    width: 176,
-    height: 176,
-    objectFit: 'contain',
-    margin: '0 auto 12px',
-    borderRadius: 12,
-    border: '1px solid #EAE4DB',
-    background: '#fff',
-    padding: 10,
-    display: 'block',
-  },
-  upiQrPlaceholder: {
-    width: 176,
-    height: 176,
-    margin: '0 auto 12px',
-    borderRadius: 12,
-    border: '1px solid #EAE4DB',
-    background: '#F7F1E9',
-    color: '#8B8278',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 12,
-  },
-  upiHint: {
-    fontSize: 12,
-    color: '#5C5650',
-    margin: '0 0 8px',
-    lineHeight: 1.5,
-  },
-  upiMeta: {
-    fontSize: 11,
-    color: '#5C5650',
-    margin: '0 0 12px',
-  },
-  upiLink: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    width: '100%',
-    padding: '11px 14px',
-    borderRadius: 12,
-    background: '#FFF3E8',
-    color: '#C4622D',
-    textDecoration: 'none',
-    fontSize: 13,
-    fontWeight: 600,
-    boxSizing: 'border-box',
-    marginBottom: 14,
-  },
-  inputLabel: {
-    display: 'block',
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#5C5650',
-    marginBottom: 6,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-  },
-  warningBox: {
-    background: 'rgba(146,88,10,0.08)',
-    border: '1px solid rgba(146,88,10,0.18)',
-    borderRadius: 12,
-    padding: '12px 14px',
-    fontSize: 12,
-    color: '#92580A',
-    lineHeight: 1.5,
-    marginBottom: 14,
-  },
-  errorBox: {
-    background: 'rgba(184,50,50,0.07)',
-    border: '1px solid rgba(184,50,50,0.18)',
-    borderRadius: 12,
-    padding: '10px 12px',
-    fontSize: 12,
-    color: '#B83232',
-    marginBottom: 12,
-  },
-  error: {
-    color: '#B83232',
-    fontSize: 13,
-    margin: '14px 0 0',
-    textAlign: 'center',
-  },
-  payBtn: {
-    width: '100%',
-    marginTop: 18,
-    border: 'none',
-    borderRadius: 14,
-    padding: '16px 18px',
-    background: '#C4622D',
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
-  },
-  secureNote: {
-    fontSize: 12,
-    color: '#7A7168',
-    textAlign: 'center',
-    margin: '12px 0 0',
-    lineHeight: 1.5,
-  },
-  successBox: {
-    margin: 'auto 16px',
-    background: '#fff',
-    borderRadius: 24,
-    padding: '36px 28px',
-    textAlign: 'center',
-    boxShadow: '0 8px 24px rgba(28,24,20,0.08)',
-  },
-  successBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: '50%',
-    background: 'rgba(39,103,73,0.10)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    margin: '0 auto 20px',
-  },
-  successTitle: {
-    fontFamily: "'Fraunces', Georgia, serif",
-    fontSize: 28,
-    fontWeight: 600,
-    color: '#1C1814',
-    margin: '0 0 8px',
-  },
-  successSub: {
-    margin: 0,
-    fontSize: 14,
-    color: '#5C5650',
-    lineHeight: 1.6,
+  infoVal: {
+    fontSize: 14, fontWeight: 600, color: 'var(--text)',
   },
 };

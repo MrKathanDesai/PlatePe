@@ -12,6 +12,7 @@ export interface AppContextValue {
   screen: Screen;
   screenParams: Record<string, unknown>;
   toast: { message: string; id: number } | null;
+  theme: 'light' | 'dark';
   login: (user: User, token: string) => Promise<void>;
   logout: () => void;
   navigate: (screen: Screen, params?: Record<string, unknown>) => void;
@@ -21,6 +22,7 @@ export interface AppContextValue {
   refreshTables: () => Promise<void>;
   refreshProducts: () => Promise<void>;
   showToast: (message: string) => void;
+  toggleTheme: () => void;
 }
 
 export const AppContext = createContext<AppContextValue | null>(null);

@@ -128,7 +128,7 @@ export default function PaymentScreen() {
           <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--green-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
             <CheckCircle size={36} color="var(--green)" />
           </div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 300, color: 'var(--text)', margin: '0 0 6px', letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 26, fontWeight: 700, color: 'var(--text)', margin: '0 0 6px', letterSpacing: '-0.04em' }}>
             Payment confirmed
           </h1>
           <p style={{ color: 'var(--text-3)', fontSize: 13 }}>Returning to floor plan…</p>
@@ -145,7 +145,7 @@ export default function PaymentScreen() {
           <button className="btn btn-ghost" style={{ fontSize: 12 }} onClick={() => navigate('Order')}>
             <ChevronLeft size={13} /> Back
           </button>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 300, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
             Checkout
           </h1>
         </div>
@@ -383,7 +383,7 @@ export default function PaymentScreen() {
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--border)', marginTop: 4 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Total</span>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 300, color: 'var(--text)' }}>₹{total.toFixed(2)}</span>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>₹{total.toFixed(2)}</span>
           </div>
         </div>
 

@@ -13,7 +13,7 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub?:
   return (
     <div className="card" style={{ flex: 1 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>{label}</div>
-      <div style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--text)', fontWeight: 300, letterSpacing: '-0.02em' }}>{value}</div>
+      <div style={{ fontFamily: 'var(--font-ui)', fontSize: 28, color: 'var(--text)', fontWeight: 700, letterSpacing: '-0.04em' }}>{value}</div>
       {sub && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>{sub}</div>}
     </div>
   );
@@ -445,7 +445,7 @@ export default function ReportingScreen() {
   const supportsRange = tab === 'Daily' || tab === 'Products' || tab === 'Heatmap' || tab === 'Turnover';
   return (
     <div style={{ padding: 32, maxWidth: 1100 }}>
-      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 300, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.02em' }}>
+      <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.04em' }}>
         Reports
       </h1>
       <div style={{ display: 'flex', gap: 6, marginBottom: 22, flexWrap: 'wrap' }}>

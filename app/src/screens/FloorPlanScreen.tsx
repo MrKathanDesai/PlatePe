@@ -58,27 +58,27 @@ function TableCard({
       }}
       style={{
         background: s.bg,
-        border: `1px solid ${s.border}`,
-        borderRadius: 12,
-        padding: '12px 14px', // Reduced padding
+        border: `1.5px solid ${s.border}`,
+        borderRadius: 'var(--radius-md)',
+        padding: '12px 14px',
         cursor: cardDisabled ? 'default' : 'pointer',
         textAlign: 'left',
         width: '100%',
         color: 'var(--text)',
-        transition: 'all 140ms',
-        boxShadow: 'var(--shadow-xs)',
+        transition: 'box-shadow 100ms, transform 80ms',
+        boxShadow: 'var(--shadow-hard-sm)',
         outline: 'none',
       }}
-      onMouseEnter={(e) => { if (!cardDisabled) (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-xs)'; }}
+      onMouseEnter={(e) => { if (!cardDisabled) (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-hard)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-hard-sm)'; }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
         <div style={{
-          fontFamily: 'var(--font-display)',
-          fontSize: 22, // Slightly smaller font
-          fontWeight: 300,
+          fontFamily: 'var(--font-mono)',
+          fontSize: 20,
+          fontWeight: 600,
           color: 'var(--text)',
-          letterSpacing: '-0.02em',
+          letterSpacing: '-0.04em',
           lineHeight: 1,
         }}>
           {table.number}
@@ -262,7 +262,7 @@ export default function FloorPlanScreen() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 300, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 22, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
             Floor Plan
           </h1>
           <div style={{ display: 'flex', gap: 20, marginTop: 6 }}>
@@ -309,14 +309,14 @@ export default function FloorPlanScreen() {
             <button onClick={() => setTransferFrom(null)} style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>
               <X size={16} />
             </button>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.03em' }}>
               Transfer Table {transferFrom.number}
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 18px' }}>Select an available table to move this order to</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
               {tables.filter((t) => t.isActive && t.status === 'Available' && t.id !== transferFrom.id).map((t) => (
                 <button key={t.id} onClick={() => handleTransfer(t)} disabled={transferring}
-                  style={{ padding: '12px 8px', borderRadius: 10, border: '1px solid var(--green)', background: 'var(--green-bg)', cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 300, color: 'var(--text)', transition: 'all 130ms' }}>
+                  style={{ padding: '12px 8px', borderRadius: 'var(--radius)', border: '1.5px solid var(--green)', background: 'var(--green-bg)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)', transition: 'all 100ms', boxShadow: 'var(--shadow-hard-sm)' }}>
                   {t.number}
                 </button>
               ))}

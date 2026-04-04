@@ -40,10 +40,10 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
     <div className="card" style={{ flex: 1 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10 }}>
             {label}
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: 30, color: 'var(--text)', fontWeight: 300, letterSpacing: '-0.02em', lineHeight: 1 }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 28, color: 'var(--text)', fontWeight: 600, letterSpacing: '-0.04em', lineHeight: 1 }}>
             {value}
           </div>
           {sub && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 5 }}>{sub}</div>}
@@ -193,14 +193,14 @@ export default function DashboardScreen() {
       {/* Header */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{
-          fontFamily: 'var(--font-display)',
+          fontFamily: 'var(--font-ui)',
           fontSize: 26,
-          fontWeight: 300,
+          fontWeight: 700,
           color: 'var(--text)',
           margin: 0,
-          letterSpacing: '-0.02em',
+          letterSpacing: '-0.04em',
         }}>
-          Good {getGreeting()}, <em>{user?.name?.split(' ')[0]}</em>
+          Good {getGreeting()}, {user?.name?.split(' ')[0]}
         </h1>
         <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 0' }}>
           {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -410,7 +410,7 @@ export default function DashboardScreen() {
               style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer' }}>
               <X size={18} />
             </button>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 400, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.04em' }}>
               Open Session
             </h2>
             <div style={{ marginBottom: 14 }}>

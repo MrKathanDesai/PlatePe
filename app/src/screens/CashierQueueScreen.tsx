@@ -46,7 +46,7 @@ export default function CashierQueueScreen() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 300, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
             Payment Queue
           </h1>
           <p style={{ color: 'var(--text-3)', fontSize: 13, margin: '4px 0 0' }}>
@@ -75,14 +75,14 @@ export default function CashierQueueScreen() {
               <div key={order.id} className="card" style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 300, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+                    <div style={{ fontFamily: 'var(--font-ui)', fontSize: 20, fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.04em' }}>
                       {table ? `Table ${table.number}` : 'Takeaway'}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
                       #{order.orderNumber} · {timeSince(order.createdAt)}
                     </div>
                   </div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--text)', fontWeight: 300 }}>
+                  <div style={{ fontFamily: 'var(--font-ui)', fontSize: 22, color: 'var(--text)', fontWeight: 700 }}>
                     ₹{Number(order.total).toFixed(0)}
                   </div>
                 </div>

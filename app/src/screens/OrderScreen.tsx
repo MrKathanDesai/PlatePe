@@ -1,56 +1,99 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, Minus, Trash2, Ban, ChevronRight, Tag, Send, Search, X, Check } from 'lucide-react';
+import { Plus, Minus, Trash2, Ban, ChevronRight, Tag, Send, Search, X, Check, EyeOff } from 'lucide-react';
 import { useApp } from '../store/app-store-context';
 import { ordersApi } from '../api/orders';
 import { discountsApi } from '../api/discounts';
+import { productsApi } from '../api/products';
 import type { Order, OrderItem, Product, Discount, Modifier } from '../types';
 
 const TAX_RATE = 0.05;
 
-function ProductCard({ product, count, onAdd }: { product: Product; count: number; onAdd: () => void }) {
+function ProductCard({ product, count, onAdd, onToggle86 }: {
+  product: Product; count: number; onAdd: () => void; onToggle86: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+
   return (
-    <button
-      onClick={onAdd}
-      disabled={product.is86d}
-      style={{
-        background: 'var(--surface)',
-        border: count > 0 ? '1px solid var(--accent)' : '1px solid var(--border)',
-        borderRadius: 10, padding: 12,
-        cursor: product.is86d ? 'not-allowed' : 'pointer',
-        textAlign: 'left',
-        opacity: product.is86d ? 0.45 : 1,
-        transition: 'all 130ms', width: '100%', position: 'relative',
-        boxShadow: count > 0 ? 'var(--shadow-sm)' : 'var(--shadow-xs)',
-      }}
-      onMouseEnter={(e) => { if (!product.is86d) (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-md)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.boxShadow = count > 0 ? 'var(--shadow-sm)' : 'var(--shadow-xs)'; }}
+    <div style={{ position: 'relative' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      {product.is86d && (
-        <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 10, padding: '2px 6px', borderRadius: 100, background: 'var(--red-bg)', color: 'var(--red)', fontWeight: 700 }}>86</span>
+      <button
+        onClick={onAdd}
+        disabled={product.is86d}
+        style={{
+          background: product.is86d ? 'var(--surface-2)' : count > 0 ? 'var(--accent-bg)' : 'var(--surface)',
+          border: product.is86d ? '1.5px solid var(--border)' : count > 0 ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
+          borderRadius: 'var(--radius)', padding: 12,
+          cursor: product.is86d ? 'not-allowed' : 'pointer',
+          textAlign: 'left',
+          opacity: product.is86d ? 0.5 : 1,
+          transition: 'box-shadow 100ms, transform 80ms', width: '100%', position: 'relative',
+          boxShadow: count > 0 && !product.is86d ? 'var(--shadow-hard)' : 'var(--shadow-hard-sm)',
+        }}
+        onMouseEnter={(e) => { if (!product.is86d) (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-hard)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.boxShadow = count > 0 && !product.is86d ? 'var(--shadow-hard)' : 'var(--shadow-hard-sm)'; }}
+      >
+        {product.is86d && (
+          <span style={{
+            position: 'absolute', top: 6, right: 6,
+            fontFamily: 'var(--font-mono)', fontSize: 9, padding: '2px 5px',
+            borderRadius: 'var(--radius)', background: 'var(--red-bg)',
+            border: '1px solid var(--red)', color: 'var(--red)', fontWeight: 700, letterSpacing: '0.06em',
+          }}>86'd</span>
+        )}
+        {count > 0 && !product.is86d && (
+          <span style={{
+            position: 'absolute', top: -7, right: -7, width: 19, height: 19,
+            borderRadius: 'var(--radius)', background: 'var(--accent)', color: '#fff',
+            fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: 'var(--shadow-hard-sm)',
+          }}>{count}</span>
+        )}
+        <div style={{
+          width: 32, height: 32, borderRadius: 'var(--radius)',
+          background: product.is86d ? 'var(--surface-3)' : 'var(--accent-bg)',
+          border: `1.5px solid ${product.is86d ? 'var(--border)' : 'var(--accent-mid)'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 8, color: product.is86d ? 'var(--text-3)' : 'var(--accent)',
+          fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+        }}>
+          {product.name[0]}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: product.is86d ? 'var(--text-3)' : 'var(--text)', marginBottom: 3, lineHeight: 1.3, textDecoration: product.is86d ? 'line-through' : 'none' }}>
+          {product.name}
+        </div>
+        <div style={{ fontSize: 13, color: product.is86d ? 'var(--text-3)' : 'var(--accent)', fontWeight: 600 }}>
+          ₹{Number(product.price).toFixed(0)}
+        </div>
+      </button>
+
+      {/* 86 toggle — appears on hover */}
+      {hovered && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggle86(); }}
+          title={product.is86d ? 'Restore availability' : "Mark as 86'd (stop selling)"}
+          style={{
+            position: 'absolute', bottom: 6, right: 6,
+            display: 'flex', alignItems: 'center', gap: 3,
+            padding: '3px 7px',
+            borderRadius: 'var(--radius)',
+            border: product.is86d ? '1.5px solid var(--green)' : '1.5px solid var(--red)',
+            background: product.is86d ? 'var(--green-bg)' : 'var(--red-bg)',
+            color: product.is86d ? 'var(--green)' : 'var(--red)',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            zIndex: 1,
+          }}
+        >
+          <EyeOff size={9} />
+          {product.is86d ? 'RESTORE' : '86'}
+        </button>
       )}
-      {count > 0 && (
-        <span style={{
-          position: 'absolute', top: -7, right: -7, width: 19, height: 19,
-          borderRadius: '50%', background: 'var(--accent)', color: '#fff',
-          fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: 'var(--shadow-sm)',
-        }}>{count}</span>
-      )}
-      <div style={{
-        width: 36, height: 36, borderRadius: 8, background: 'var(--accent-bg)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        marginBottom: 9, color: 'var(--accent)',
-        fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 300,
-      }}>
-        {product.name[0]}
-      </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 3, lineHeight: 1.3 }}>
-        {product.name}
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}>
-        ₹{Number(product.price).toFixed(0)}
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -107,7 +150,7 @@ function CartItem({ item, onInc, onDec, onRemove, onVoid }: {
 }
 
 export default function OrderScreen() {
-  const { activeOrder, setActiveOrder, categories, products, tables, navigate, showToast, user } = useApp();
+  const { activeOrder, setActiveOrder, categories, products, tables, navigate, showToast, user, refreshProducts } = useApp();
   const [activeCat, setActiveCat] = useState<string | 'all'>('all');
   const [search, setSearch] = useState('');
   const [discounts, setDiscounts] = useState<Discount[]>([]);
@@ -153,6 +196,14 @@ export default function OrderScreen() {
       setOrder(updated.data);
       setActiveOrder(updated.data);
     } catch { /* silent */ }
+  };
+
+  const handleToggle86 = async (product: Product) => {
+    try {
+      await productsApi.toggle86(product.id);
+      await refreshProducts();
+      showToast(product.is86d ? `${product.name} is now available` : `${product.name} marked 86'd`);
+    } catch { showToast('Failed to update'); }
   };
 
   const addItem = async (product: Product, modifiers: Modifier[] = []) => {
@@ -290,7 +341,7 @@ export default function OrderScreen() {
           <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 9px' }} onClick={() => navigate('FloorPlan')}>
             ← Floor
           </button>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+          <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
             {table ? `Table ${table.number}` : 'Takeaway'}
             <span style={{ color: 'var(--text-3)', fontSize: 14, marginLeft: 6 }}>#{order.orderNumber}</span>
           </h1>
@@ -318,7 +369,7 @@ export default function OrderScreen() {
         {/* Products grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, overflowY: 'auto', paddingRight: 20 }}>
           {filteredProducts.map((product) => (
-            <ProductCard key={product.id} product={product} count={cartCounts[product.id] ?? 0} onAdd={() => addItem(product)} />
+            <ProductCard key={product.id} product={product} count={cartCounts[product.id] ?? 0} onAdd={() => addItem(product)} onToggle86={() => handleToggle86(product)} />
           ))}
           {filteredProducts.length === 0 && (
             <div style={{ gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-3)', padding: 40, fontSize: 13 }}>
@@ -375,7 +426,7 @@ export default function OrderScreen() {
             paddingTop: 10, borderTop: '1px solid var(--border)', marginTop: 6, marginBottom: 14,
           }}>
             <span>Total</span>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 300, fontSize: 20 }}>₹{total.toFixed(2)}</span>
+            <span style={{ fontFamily: 'var(--font-ui)', fontWeight: 700, fontSize: 20 }}>₹{total.toFixed(2)}</span>
           </div>
 
           <button className="btn btn-ghost" style={{ width: '100%', marginBottom: 8, fontSize: 12 }}
@@ -410,7 +461,7 @@ export default function OrderScreen() {
           <div className="card" style={{ width: 360, padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <div>
-                <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: 0, letterSpacing: '-0.02em' }}>
+                <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
                   {modifierProduct.name}
                 </h2>
                 <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>Select modifiers (optional)</div>
@@ -474,7 +525,7 @@ export default function OrderScreen() {
       {showDiscountModal && (
         <div className="modal-overlay">
           <div className="card" style={{ width: 320, padding: 22 }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: '0 0 14px', letterSpacing: '-0.02em' }}>
+            <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 400, color: 'var(--text)', margin: '0 0 14px', letterSpacing: '-0.04em' }}>
               Discounts
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 12 }}>

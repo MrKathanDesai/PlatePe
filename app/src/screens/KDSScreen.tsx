@@ -206,7 +206,7 @@ export default function KDSScreen() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ChefHat size={18} color="var(--accent)" />
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 400, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 400, color: 'var(--text)', letterSpacing: '-0.04em' }}>
             Kitchen Display
           </span>
           <span style={{

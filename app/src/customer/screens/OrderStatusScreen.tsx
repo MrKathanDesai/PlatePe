@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { LogOut } from 'lucide-react';
 import { customerApi } from '../api/customerApi';
 import { useCustomer } from '../CustomerContext';
 import { getKDSSocket } from '../../api/kds';
@@ -35,7 +36,7 @@ function deriveDisplayStatus(
 }
 
 export default function OrderStatusScreen() {
-  const { orderId, orderNumber, orderStatus, orderTotal, setOrderStatus, setScreen } = useCustomer();
+  const { orderId, orderNumber, orderStatus, orderTotal, setOrderStatus, setScreen, clearCart, logout, tableNumber } = useCustomer();
   const [order, setOrder] = useState<{
     id: string;
     orderNumber: string;
@@ -104,6 +105,7 @@ export default function OrderStatusScreen() {
   }
 
   function handleAddMore() {
+    clearCart();
     setScreen('menu');
   }
 
@@ -111,7 +113,7 @@ export default function OrderStatusScreen() {
     <div style={styles.page}>
       <div style={styles.centered}>
         <div style={styles.spinner} />
-        <p style={{ color: '#5C5650', marginTop: 16 }}>Loading order…</p>
+        <p style={{ color: 'var(--text-2)', marginTop: 16 }}>Loading order…</p>
       </div>
     </div>
   );
@@ -120,7 +122,13 @@ export default function OrderStatusScreen() {
     <div style={styles.page}>
       <header style={styles.header}>
         <span style={styles.brand}>PlatePe</span>
-        <span style={styles.orderNum}>{order?.orderNumber ?? orderNumber}</span>
+        <div style={styles.headerActions}>
+          {tableNumber && <span style={styles.tableChip}>Table {tableNumber}</span>}
+          <span style={styles.orderNum}>{order?.orderNumber ?? orderNumber}</span>
+          <button style={styles.logoutBtn} onClick={logout}>
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
       </header>
 
       <div style={styles.content}>
@@ -136,7 +144,7 @@ export default function OrderStatusScreen() {
             <>
               <div style={styles.pulseRing}>
                 <span style={styles.statusEmoji}>
-                  {status === 'Open' ? '🍽' : status === 'Sent' ? '👨‍🍳' : '🔔'}
+                  {status === 'Open' ? 'Open' : status === 'Sent' ? 'Preparing' : 'Ready'}
                 </span>
               </div>
               <h2 style={styles.statusHeading}>
@@ -155,26 +163,26 @@ export default function OrderStatusScreen() {
             {STATUS_STEPS.slice(0, -1).map((s, i) => (
               <div key={s} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                  {i > 0 && <div style={{ flex: 1, height: 2, background: i <= step ? '#C4622D' : '#DDD8D0' }} />}
+                  {i > 0 && <div style={{ flex: 1, height: 2, background: i <= step ? 'var(--accent)' : '#DDD8D0' }} />}
                   <div style={{
                     width: 28,
                     height: 28,
                     borderRadius: '50%',
-                    background: i <= step ? '#C4622D' : '#F3EFE8',
-                    border: `2px solid ${i <= step ? '#C4622D' : '#DDD8D0'}`,
+                    background: i <= step ? 'var(--accent)' : 'var(--surface-2)',
+                    border: `2px solid ${i <= step ? 'var(--accent)' : '#DDD8D0'}`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 12,
-                    color: i <= step ? '#fff' : '#A09890',
+                    color: i <= step ? '#fff' : 'var(--text-3)',
                     fontWeight: 700,
                     flexShrink: 0,
                   }}>
                     {i < step ? '✓' : i + 1}
                   </div>
-                  {i < STATUS_STEPS.length - 2 && <div style={{ flex: 1, height: 2, background: i < step ? '#C4622D' : '#DDD8D0' }} />}
+                  {i < STATUS_STEPS.length - 2 && <div style={{ flex: 1, height: 2, background: i < step ? 'var(--accent)' : '#DDD8D0' }} />}
                 </div>
-                <span style={{ fontSize: 10, color: i <= step ? '#C4622D' : '#A09890', fontWeight: i <= step ? 600 : 400 }}>{s}</span>
+                <span style={{ fontSize: 10, color: i <= step ? 'var(--accent)' : 'var(--text-3)', fontWeight: i <= step ? 600 : 400 }}>{s}</span>
               </div>
             ))}
           </div>
@@ -187,11 +195,11 @@ export default function OrderStatusScreen() {
             {order.items.map((item) => (
               <div key={item.id} style={styles.itemRow}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1814' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
                     {item.quantity}× {item.productName}
                   </div>
                   {item.modifiers.length > 0 && (
-                    <div style={{ fontSize: 12, color: '#5C5650', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
                       {item.modifiers.map((m) => m.name).join(', ')}
                     </div>
                   )}
@@ -201,7 +209,7 @@ export default function OrderStatusScreen() {
                     fontSize: 11,
                     fontWeight: 600,
                     padding: '2px 8px',
-                    borderRadius: 100,
+                    borderRadius: 'var(--radius)',
                     background: item.status === 'Done' ? 'rgba(39,103,73,0.10)' : item.status === 'Sent' ? 'rgba(146,88,10,0.08)' : 'rgba(59,95,190,0.08)',
                     color: item.status === 'Done' ? '#276749' : item.status === 'Sent' ? '#92580A' : '#3B5FBE',
                   }}>
@@ -228,7 +236,7 @@ export default function OrderStatusScreen() {
                 color: isPaid
                   ? '#276749'
                   : canSettleBill
-                    ? '#C4622D'
+                    ? 'var(--accent)'
                     : '#3B5FBE',
               }}>
                 {isPaid ? 'Paid' : canSettleBill ? 'Ready to settle' : 'Pay at the end'}
@@ -238,7 +246,7 @@ export default function OrderStatusScreen() {
             <div style={styles.billSummary}>
               <div style={styles.billRow}><span>Subtotal</span><span>₹{Number(order?.subtotal ?? 0).toFixed(2)}</span></div>
               <div style={styles.billRow}><span>GST (5%)</span><span>₹{Number(order?.tax ?? 0).toFixed(2)}</span></div>
-              <div style={{ ...styles.billRow, fontWeight: 700, fontSize: 16, borderTop: '1px solid #EAE4DB', paddingTop: 10, marginTop: 4 }}>
+              <div style={{ ...styles.billRow, fontWeight: 700, fontSize: 16, borderTop: '1px solid var(--border)', paddingTop: 10, marginTop: 4 }}>
                 <span>Total</span><span>₹{billTotal.toFixed(2)}</span>
               </div>
             </div>
@@ -278,10 +286,10 @@ export default function OrderStatusScreen() {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100dvh',
-    background: '#F8F6F2',
+    background: 'var(--bg)',
     display: 'flex',
     flexDirection: 'column',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
     maxWidth: 480,
     margin: '0 auto',
   },
@@ -297,31 +305,61 @@ const styles: Record<string, React.CSSProperties> = {
     width: 36,
     height: 36,
     border: '3px solid #DDD8D0',
-    borderTopColor: '#C4622D',
+    borderTopColor: 'var(--accent)',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
   header: {
-    background: '#fff',
+    background: 'var(--surface)',
     padding: '14px 20px',
-    borderBottom: '1px solid #EAE4DB',
+    borderBottom: '1px solid var(--border)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 12,
   },
   brand: {
-    fontFamily: "'Fraunces', Georgia, serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 22,
     fontWeight: 600,
-    color: '#C4622D',
+    color: 'var(--accent)',
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  tableChip: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: 'var(--text-2)',
+    background: 'var(--surface-2)',
+    padding: '4px 10px',
+    borderRadius: 'var(--radius)',
   },
   orderNum: {
     fontSize: 13,
     fontWeight: 600,
-    color: '#5C5650',
-    background: '#F3EFE8',
+    color: 'var(--text-2)',
+    background: 'var(--surface-2)',
     padding: '4px 10px',
-    borderRadius: 100,
+    borderRadius: 'var(--radius)',
+  },
+  logoutBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    border: '1px solid #E0D7CB',
+    background: 'var(--surface)',
+    color: 'var(--text-2)',
+    borderRadius: 'var(--radius)',
+    padding: '5px 10px',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "var(--font-ui)",
   },
   content: {
     flex: 1,
@@ -331,8 +369,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 16,
   },
   statusCard: {
-    background: '#fff',
-    borderRadius: 20,
+    background: 'var(--surface)',
+    borderRadius: 'var(--radius-lg)',
     padding: '28px 20px 20px',
     boxShadow: '0 1px 4px rgba(28,24,20,0.06)',
     display: 'flex',
@@ -366,14 +404,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   statusEmoji: { fontSize: 36 },
   statusHeading: {
-    fontFamily: "'Fraunces', Georgia, serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 22,
     fontWeight: 600,
-    color: '#1C1814',
+    color: 'var(--text)',
     margin: '0 0 6px',
     letterSpacing: '-0.01em',
   },
-  statusSub: { fontSize: 13, color: '#5C5650', margin: '0 0 24px' },
+  statusSub: { fontSize: 13, color: 'var(--text-2)', margin: '0 0 24px' },
   progressContainer: {
     display: 'flex',
     width: '100%',
@@ -381,22 +419,22 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   itemsCard: {
-    background: '#fff',
-    borderRadius: 20,
+    background: 'var(--surface)',
+    borderRadius: 'var(--radius-lg)',
     padding: '20px',
     boxShadow: '0 1px 4px rgba(28,24,20,0.06)',
   },
   billCard: {
-    background: '#fff',
-    borderRadius: 20,
+    background: 'var(--surface)',
+    borderRadius: 'var(--radius-lg)',
     padding: '20px',
     boxShadow: '0 1px 4px rgba(28,24,20,0.06)',
   },
   itemsTitle: {
-    fontFamily: "'Fraunces', Georgia, serif",
+    fontFamily: "var(--font-ui)",
     fontSize: 17,
     fontWeight: 600,
-    color: '#1C1814',
+    color: 'var(--text)',
     margin: '0 0 14px',
   },
   billHeader: {
@@ -416,20 +454,20 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     padding: '10px 0',
-    borderBottom: '1px solid #F3EFE8',
+    borderBottom: '1px solid var(--surface-2)',
     gap: 12,
   },
   billSummary: { marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 },
-  billRow: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: '#5C5650' },
+  billRow: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-2)' },
   billHelp: {
     fontSize: 13,
-    color: '#5C5650',
+    color: 'var(--text-2)',
     lineHeight: 1.55,
     margin: '16px 0 14px',
   },
   actions: { display: 'flex', flexDirection: 'column', gap: 10 },
   payBtn: {
-    background: '#C4622D',
+    background: 'var(--accent)',
     color: '#fff',
     border: 'none',
     borderRadius: 14,
@@ -439,18 +477,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     boxShadow: '0 4px 16px rgba(196,98,45,0.30)',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
   },
   addMoreBtn: {
-    background: '#fff',
-    color: '#C4622D',
-    border: '1.5px solid #C4622D',
+    background: 'var(--surface)',
+    color: 'var(--accent)',
+    border: '1.5px solid var(--accent)',
     borderRadius: 14,
     padding: '13px',
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
     width: '100%',
-    fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+    fontFamily: "var(--font-ui)",
   },
 };
