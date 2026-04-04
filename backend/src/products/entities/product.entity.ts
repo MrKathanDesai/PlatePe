@@ -19,7 +19,7 @@ export class Product {
   id: string;
 
   @Index({ unique: true })
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   code: string | null;
 
   @Column()

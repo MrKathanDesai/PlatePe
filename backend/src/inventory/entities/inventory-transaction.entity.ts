@@ -35,16 +35,16 @@ export class InventoryTransaction {
   @Column({ type: 'decimal', precision: 12, scale: 3, nullable: true })
   balanceAfter: number | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   referenceType: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   referenceId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   actorId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   reason: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
