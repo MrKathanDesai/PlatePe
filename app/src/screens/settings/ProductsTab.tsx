@@ -26,6 +26,7 @@ function parseCSVLine(line: string): string[] {
 }
 
 type ParsedRow = {
+  code: string;
   name: string;
   description: string;
   price: string;
@@ -49,6 +50,7 @@ function parseCSV(text: string): ParsedRow[] {
   return lines.slice(1).map((line) => {
     const vals = parseCSVLine(line);
     const row = Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? ''])) as Record<string, string>;
+    const code = (row.id ?? row.code ?? row.sku ?? '').trim();
     const name = (row.name ?? row.product_name ?? row.item ?? '').trim();
     const price = (row.price ?? row.rate ?? '').replace(/[₹$,]/g, '').trim();
     const cost_price = (row.cost_price ?? row.cost ?? '').replace(/[₹$,]/g, '').trim();
@@ -67,7 +69,7 @@ function parseCSV(text: string): ParsedRow[] {
     else if (!price || isNaN(parseFloat(price))) _error = 'Invalid price';
     else if (parseFloat(price) < 0) _error = 'Price must be positive';
 
-    return { name, description, price, cost_price, category, kds_station, image_url, send_to_kds, is_active, is_available, tax_rate, low_stock_alert, _valid: !_error, _error };
+    return { code, name, description, price, cost_price, category, kds_station, image_url, send_to_kds, is_active, is_available, tax_rate, low_stock_alert, _valid: !_error, _error };
   }).filter((r) => r.name || r.price); // skip fully empty rows
 }
 
@@ -150,8 +152,8 @@ function ProductModal({ product, categories, onSave, onClose }: {
   );
 }
 
-function CSVImportModal({ categories, onImported, onClose }: {
-  categories: Category[]; onImported: () => void; onClose: () => void;
+function CSVImportModal({ onImported, onClose }: {
+  onImported: () => void; onClose: () => void;
 }) {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload');
@@ -179,62 +181,39 @@ function CSVImportModal({ categories, onImported, onClose }: {
 
   const validRows = rows.filter((r) => r._valid);
 
-  // Track dynamically created categories so we don't double-create within a single import run
-  const createdCats = useRef<Record<string, string>>({});
-
   const runImport = async () => {
-    createdCats.current = {};
     setStep('importing');
-    let ok = 0, fail = 0;
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
-      setProgress(Math.round(((i + 1) / validRows.length) * 100));
-      try {
-        // Find or create category
-        let categoryId: string | undefined;
-        if (row.category) {
-          const key = row.category.toLowerCase();
-          const existing = categories.find((c) => c.name.toLowerCase() === key);
-          if (existing) {
-            categoryId = existing.id;
-          } else if (createdCats.current[key]) {
-            categoryId = createdCats.current[key];
-          } else {
-            try {
-              const station = (row.kds_station === 'BREWBAR' || row.kds_station === 'KITCHEN')
-                ? (row.kds_station as 'BREWBAR' | 'KITCHEN')
-                : undefined;
-              const catRes = await productsApi.createCategory({ name: row.category, station });
-              categoryId = catRes.data.id;
-              createdCats.current[key] = catRes.data.id;
-            } catch { /* ignore — category may have been created by a parallel row */ }
-          }
-        }
-
-        const isFalsy = (v: string) => v === 'false' || v === '0' || v === 'no';
-
-        await productsApi.create({
-          name: row.name,
-          price: parseFloat(row.price),
-          description: row.description || null,
-          categoryId,
-          image: row.image_url || null,
-          costPrice: row.cost_price ? parseFloat(row.cost_price) : undefined,
-          taxRate: row.tax_rate ? parseFloat(row.tax_rate) : undefined,
-          sendToKitchen: row.send_to_kds ? !isFalsy(row.send_to_kds) : undefined,
-          isActive: row.is_active ? !isFalsy(row.is_active) : undefined,
-          is86d: row.is_available ? isFalsy(row.is_available) : undefined,
-          lowStockThreshold: row.low_stock_alert ? parseInt(row.low_stock_alert, 10) : undefined,
-        });
-        ok++;
-      } catch {
-        fail++;
-      }
+    setProgress(15);
+    try {
+      const isFalsy = (v: string) => ['false', '0', 'no'].includes(v.trim().toLowerCase());
+      const payload = validRows.map((row) => ({
+        code: row.code || undefined,
+        name: row.name,
+        description: row.description || null,
+        category: row.category || undefined,
+        price: parseFloat(row.price),
+        costPrice: row.cost_price ? parseFloat(row.cost_price) : undefined,
+        taxRate: row.tax_rate ? parseFloat(row.tax_rate) : undefined,
+        imageUrl: row.image_url || null,
+        kdsStation: row.kds_station || undefined,
+        sendToKds: row.send_to_kds ? !isFalsy(row.send_to_kds) : undefined,
+        isActive: row.is_active ? !isFalsy(row.is_active) : undefined,
+        isAvailable: row.is_available ? !isFalsy(row.is_available) : undefined,
+        stockTracked: row.low_stock_alert ? true : undefined,
+        lowStockAlert: row.low_stock_alert ? parseInt(row.low_stock_alert, 10) : undefined,
+      }));
+      setProgress(55);
+      const res = await productsApi.importRows(payload);
+      setProgress(100);
+      setImported(res.data.created + res.data.updated);
+      setErrors(rows.filter((r) => !r._valid).length);
+      setStep('done');
+      await onImported();
+    } catch {
+      setImported(0);
+      setErrors(validRows.length);
+      setStep('done');
     }
-    setImported(ok);
-    setErrors(fail);
-    setStep('done');
-    onImported();
   };
 
   return (
@@ -248,7 +227,7 @@ function CSVImportModal({ categories, onImported, onClose }: {
           Import Products
         </h2>
         <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 20px' }}>
-          Upload a CSV file with columns: <code style={{ background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>name, description, price, cost_price, category, kds_station, image_url, send_to_kds, is_active, is_available, tax_rate, low_stock_alert</code>
+          Upload a CSV file with columns like <code style={{ background: 'var(--surface-2)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>id/code, name, description, price, cost_price, category, kds_station, image_url, send_to_kds, is_active, is_available, tax_rate, low_stock_alert</code>
         </p>
 
         {step === 'upload' && (
@@ -282,9 +261,9 @@ function CSVImportModal({ categories, onImported, onClose }: {
             <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', marginBottom: 4 }}>Expected format:</div>
               <code style={{ fontSize: 11, color: 'var(--text-3)', display: 'block', lineHeight: 1.8 }}>
-                name,description,price,cost_price,category,kds_station,image_url<br />
-                Espresso,Single shot espresso,80,40,Coffee,BREWBAR,<br />
-                Croissant,Butter croissant,120,60,Food,KITCHEN,https://...
+                id,name,description,price,cost_price,category,kds_station,image_url<br />
+                P001,Espresso,Single shot espresso,80,40,Coffee,BREWBAR,<br />
+                P023,Croissant,Butter croissant,120,60,Food,KITCHEN,https://...
               </code>
             </div>
           </div>
@@ -636,7 +615,7 @@ export default function ProductsTab() {
           onSave={handleSave} onClose={() => setEditProduct(null)} />
       )}
       {showImport && (
-        <CSVImportModal categories={categories}
+        <CSVImportModal
           onImported={async () => { await refreshProducts(); }}
           onClose={() => setShowImport(false)} />
       )}

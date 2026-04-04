@@ -9,6 +9,7 @@ export const productsApi = {
     client.get<Product>(`/products/${id}`),
 
   create: (data: {
+    code?: string | null;
     name: string;
     price: number;
     categoryId?: string;
@@ -25,6 +26,7 @@ export const productsApi = {
     client.post<Product>('/products', data),
 
   update: (id: string, data: Partial<{
+    code: string | null;
     name: string;
     price: number;
     costPrice: number;
@@ -39,6 +41,28 @@ export const productsApi = {
 
   delete: (id: string) =>
     client.delete(`/products/${id}`),
+
+  importRows: (rows: Array<{
+    code?: string;
+    name: string;
+    description?: string | null;
+    category?: string;
+    price: number;
+    costPrice?: number;
+    taxRate?: number;
+    imageUrl?: string | null;
+    kdsStation?: string;
+    sendToKds?: boolean;
+    isActive?: boolean;
+    isAvailable?: boolean;
+    stockTracked?: boolean;
+    stockQty?: number;
+    lowStockAlert?: number;
+  }>) =>
+    client.post<{ rows: number; created: number; updated: number; categoriesCreated: number }>(
+      '/products/import',
+      { rows },
+    ),
 
   /** Toggle 86 (sold-out) status. Backend: PATCH /products/:id/86 (flips the boolean) */
   toggle86: (id: string) =>
