@@ -104,12 +104,16 @@ export default function OtpLoginScreen() {
     setError('');
     setLoading(true);
     try {
+      // Embed email in the return URL so it works even if the link opens
+      // in a different browser (e.g. Gmail app's built-in WebView)
+      const returnUrl = new URL(window.location.href);
+      returnUrl.searchParams.set('emailForSignIn', email);
       const actionCodeSettings = {
-        url: window.location.href, // return to current table URL
+        url: returnUrl.toString(),
         handleCodeInApp: true,
       };
       await sendSignInLinkToEmail(auth!, email, actionCodeSettings);
-      // Save email so we can complete sign-in when they click the link
+      // Also save locally as a fallback for same-browser opens
       localStorage.setItem('customer_email_for_signin', email);
       setEmailStep('sent');
     } catch (e: any) {
