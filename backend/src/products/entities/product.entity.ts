@@ -8,6 +8,7 @@ import {
   ManyToMany,
   JoinTable,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Category } from './category.entity';
 import { Modifier } from './modifier.entity';
@@ -16,6 +17,10 @@ import { Modifier } from './modifier.entity';
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Index({ unique: true })
+  @Column({ nullable: true })
+  code: string | null;
 
   @Column()
   name: string;

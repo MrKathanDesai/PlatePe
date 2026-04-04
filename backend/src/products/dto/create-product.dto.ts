@@ -10,6 +10,10 @@ import {
 import { Type } from 'class-transformer';
 
 export class CreateProductDto {
+  @IsOptional()
+  @IsString()
+  code?: string | null;
+
   @IsString()
   name: string;
 

@@ -31,6 +31,10 @@ import { Payment } from './payments/entities/payment.entity';
 import { KDSTicket } from './kds/entities/kds-ticket.entity';
 import { AuditLog } from './audit/entities/audit-log.entity';
 import { Discount } from './discounts/entities/discount.entity';
+import { Ingredient } from './inventory/entities/ingredient.entity';
+import { ProductRecipeLine } from './inventory/entities/product-recipe-line.entity';
+import { RecipeModifierEffect } from './inventory/entities/recipe-modifier-effect.entity';
+import { InventoryTransaction } from './inventory/entities/inventory-transaction.entity';
 
 @Module({
   controllers: [AppController],
@@ -61,6 +65,10 @@ import { Discount } from './discounts/entities/discount.entity';
           KDSTicket,
           AuditLog,
           Discount,
+          Ingredient,
+          ProductRecipeLine,
+          RecipeModifierEffect,
+          InventoryTransaction,
         ],
         synchronize: true, // Use migrations in production
         logging: config.get('NODE_ENV') !== 'production',

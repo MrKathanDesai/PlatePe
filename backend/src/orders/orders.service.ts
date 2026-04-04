@@ -18,6 +18,7 @@ import { User } from '../auth/entities/user.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 import { Payment } from '../payments/entities/payment.entity';
+import { InventoryService } from '../inventory/inventory.service';
 
 @Injectable()
 export class OrdersService {
@@ -29,6 +30,7 @@ export class OrdersService {
     @InjectRepository(Table) private tableRepo: Repository<Table>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     @InjectRepository(KDSTicket) private kdsRepo: Repository<KDSTicket>,
+    private inventoryService: InventoryService,
     private dataSource: DataSource,
   ) {}
 
@@ -154,6 +156,13 @@ export class OrdersService {
       const kitchenItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'KITCHEN');
       const brewbarItems = pendingItems.filter((i) => stationMap.get(i.productId) === 'BREWBAR');
 
+      const resolvedInventory = await this.inventoryService.resolveIngredientRequirements(
+        manager,
+        pendingItems,
+      );
+      const recipeBackedItemIds = new Set(resolvedInventory.recipeBackedItemIds);
+      const legacyStockItems = pendingItems.filter((item) => !recipeBackedItemIds.has(item.id));
+
       // Mark all pending items as Sent
       await manager.update(
         OrderLineItem,
@@ -161,8 +170,19 @@ export class OrdersService {
         { status: 'Sent' },
       );
 
-      // Decrement stock
-      for (const item of pendingItems) {
+      await this.inventoryService.applyIngredientRequirements(
+        manager,
+        resolvedInventory.requirements,
+        {
+          type: 'ORDER_CONSUMPTION',
+          referenceType: 'Order',
+          referenceId: orderId,
+          reason: isAddon ? 'Addon fired to station' : 'Order fired to station',
+        },
+      );
+
+      // Backward-compatible fallback for products that do not have recipes yet.
+      for (const item of legacyStockItems) {
         if (item.productId) {
           await manager.decrement(Product, { id: item.productId }, 'stockQty', item.quantity);
         }
@@ -254,41 +274,58 @@ export class OrdersService {
   }
 
   async voidItem(orderId: string, itemId: string, dto: VoidItemDto, user: User): Promise<Order> {
-    const item = await this.itemRepo.findOne({ where: { id: itemId, orderId } });
-    if (!item) throw new NotFoundException('Item not found');
-    if (item.status === 'Voided') throw new BadRequestException('Item already voided');
+    return this.dataSource.transaction(async (manager) => {
+      const item = await manager.findOne(OrderLineItem, { where: { id: itemId, orderId } });
+      if (!item) throw new NotFoundException('Item not found');
+      if (item.status === 'Voided') throw new BadRequestException('Item already voided');
 
-    if ((item.status === 'Sent' || item.status === 'Done') && user.role !== 'Admin' && user.role !== 'Manager') {
-      throw new ForbiddenException('Only Admin or Manager can void items that were already sent or completed');
-    }
+      if ((item.status === 'Sent' || item.status === 'Done') && user.role !== 'Admin' && user.role !== 'Manager') {
+        throw new ForbiddenException('Only Admin or Manager can void items that were already sent or completed');
+      }
 
-    if (item.status === 'Sent' || item.status === 'Done') {
-      await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
-    }
+      if (item.status === 'Sent' || item.status === 'Done') {
+        const resolved = await this.inventoryService.resolveIngredientRequirements(manager, [item]);
+        if (resolved.recipeBackedItemIds.includes(item.id)) {
+          await this.inventoryService.applyIngredientRequirements(
+            manager,
+            this.inventoryService.invertRequirements(resolved.requirements),
+            {
+              actorId: user.id,
+              type: 'ORDER_REPLENISHMENT',
+              referenceType: 'OrderLineItem',
+              referenceId: itemId,
+              reason: dto.reason ?? 'Void item',
+            },
+          );
+        } else {
+          await manager.increment(Product, { id: item.productId }, 'stockQty', item.quantity);
+        }
+      }
 
-    await this.itemRepo.update(itemId, {
-      status: 'Voided',
-      voidedBy: user.id,
-      voidReason: dto.reason,
+      await manager.update(OrderLineItem, itemId, {
+        status: 'Voided',
+        voidedBy: user.id,
+        voidReason: dto.reason,
+      });
+
+      await manager.getRepository(AuditLog).save(
+        manager.getRepository(AuditLog).create({
+          actorId: user.id,
+          action: 'VOID_ITEM',
+          entityType: 'OrderLineItem',
+          entityId: itemId,
+          metaBefore: { status: item.status },
+          metaAfter: { status: 'Voided', reason: dto.reason },
+        }),
+      );
+
+      const allItems = await manager.find(OrderLineItem, { where: { orderId } });
+      const order = await manager.findOneOrFail(Order, { where: { id: orderId }, relations: ['items'] });
+      const { subtotal, tax, total } = this.calcTotals(allItems, Number(order.discount), Number(order.tip));
+      await manager.update(Order, orderId, { subtotal, tax, total });
+
+      return this.findOne(orderId);
     });
-
-    await this.auditRepo.save(
-      this.auditRepo.create({
-        actorId: user.id,
-        action: 'VOID_ITEM',
-        entityType: 'OrderLineItem',
-        entityId: itemId,
-        metaBefore: { status: item.status },
-        metaAfter: { status: 'Voided', reason: dto.reason },
-      }),
-    );
-
-    const allItems = await this.itemRepo.find({ where: { orderId } });
-    const order = await this.findOne(orderId);
-    const { subtotal, tax, total } = this.calcTotals(allItems, Number(order.discount), Number(order.tip));
-    await this.orderRepo.update(orderId, { subtotal, tax, total });
-
-    return this.findOne(orderId);
   }
 
   async applyDiscount(orderId: string, dto: ApplyDiscountDto, user: User): Promise<Order> {
@@ -336,21 +373,37 @@ export class OrdersService {
   }
 
   async removeItem(orderId: string, itemId: string): Promise<Order> {
-    const item = await this.itemRepo.findOne({ where: { id: itemId, orderId } });
-    if (!item) throw new NotFoundException('Item not found');
+    return this.dataSource.transaction(async (manager) => {
+      const item = await manager.findOne(OrderLineItem, { where: { id: itemId, orderId } });
+      if (!item) throw new NotFoundException('Item not found');
 
-    if (item.status === 'Sent' || item.status === 'Done') {
-      await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
-    }
+      if (item.status === 'Sent' || item.status === 'Done') {
+        const resolved = await this.inventoryService.resolveIngredientRequirements(manager, [item]);
+        if (resolved.recipeBackedItemIds.includes(item.id)) {
+          await this.inventoryService.applyIngredientRequirements(
+            manager,
+            this.inventoryService.invertRequirements(resolved.requirements),
+            {
+              type: 'ORDER_REPLENISHMENT',
+              referenceType: 'OrderLineItem',
+              referenceId: itemId,
+              reason: 'Remove sent item',
+            },
+          );
+        } else {
+          await manager.increment(Product, { id: item.productId }, 'stockQty', item.quantity);
+        }
+      }
 
-    await this.itemRepo.delete(itemId);
+      await manager.delete(OrderLineItem, itemId);
 
-    const allItems = await this.itemRepo.find({ where: { orderId } });
-    const order = await this.findOne(orderId);
-    const { subtotal, tax, total } = this.calcTotals(allItems, Number(order.discount), Number(order.tip));
-    await this.orderRepo.update(orderId, { subtotal, tax, total });
+      const allItems = await manager.find(OrderLineItem, { where: { orderId } });
+      const order = await manager.findOneOrFail(Order, { where: { id: orderId }, relations: ['items'] });
+      const { subtotal, tax, total } = this.calcTotals(allItems, Number(order.discount), Number(order.tip));
+      await manager.update(Order, orderId, { subtotal, tax, total });
 
-    return this.findOne(orderId);
+      return this.findOne(orderId);
+    });
   }
 
   async updateTip(orderId: string, tip: number): Promise<Order> {
@@ -361,44 +414,59 @@ export class OrdersService {
   }
 
   async voidOrder(orderId: string, user: User): Promise<Order> {
-    const order = await this.findOne(orderId);
-    if (order.status === 'Paid') throw new BadRequestException('Cannot void a paid order');
-    if (order.status === 'Voided') throw new BadRequestException('Order already voided');
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, { where: { id: orderId }, relations: ['items'] });
+      if (!order) throw new NotFoundException('Order not found');
+      if (order.status === 'Paid') throw new BadRequestException('Cannot void a paid order');
+      if (order.status === 'Voided') throw new BadRequestException('Order already voided');
 
-    // Restore stock for sent items
-    const fulfilledItems = order.items.filter((i) => i.status === 'Sent' || i.status === 'Done');
-    for (const item of fulfilledItems) {
-      await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
-    }
+      const fulfilledItems = order.items.filter((i) => i.status === 'Sent' || i.status === 'Done');
+      const resolved = await this.inventoryService.resolveIngredientRequirements(manager, fulfilledItems);
+      const recipeBackedItemIds = new Set(resolved.recipeBackedItemIds);
 
-    await this.itemRepo.update(
-      { orderId },
-      { status: 'Voided' },
-    );
-    await this.orderRepo.update(orderId, { status: 'Voided' });
+      if (resolved.requirements.length) {
+        await this.inventoryService.applyIngredientRequirements(
+          manager,
+          this.inventoryService.invertRequirements(resolved.requirements),
+          {
+            actorId: user.id,
+            type: 'ORDER_REPLENISHMENT',
+            referenceType: 'Order',
+            referenceId: orderId,
+            reason: 'Void order',
+          },
+        );
+      }
 
-    // Free the table
-    if (order.tableId) {
-      await this.tableRepo.update(order.tableId, {
-        status: 'Available',
-        currentOrderId: null,
-        currentBill: null,
-        occupiedSince: null,
-      });
-    }
+      for (const item of fulfilledItems.filter((entry) => !recipeBackedItemIds.has(entry.id))) {
+        await manager.increment(Product, { id: item.productId }, 'stockQty', item.quantity);
+      }
 
-    await this.auditRepo.save(
-      this.auditRepo.create({
-        actorId: user.id,
-        action: 'VOID_ORDER',
-        entityType: 'Order',
-        entityId: orderId,
-        metaBefore: { status: order.status },
-        metaAfter: { status: 'Voided' },
-      }),
-    );
+      await manager.update(OrderLineItem, { orderId }, { status: 'Voided' });
+      await manager.update(Order, orderId, { status: 'Voided' });
 
-    return this.findOne(orderId);
+      if (order.tableId) {
+        await manager.update(Table, order.tableId, {
+          status: 'Available',
+          currentOrderId: null,
+          currentBill: null,
+          occupiedSince: null,
+        });
+      }
+
+      await manager.getRepository(AuditLog).save(
+        manager.getRepository(AuditLog).create({
+          actorId: user.id,
+          action: 'VOID_ORDER',
+          entityType: 'Order',
+          entityId: orderId,
+          metaBefore: { status: order.status },
+          metaAfter: { status: 'Voided' },
+        }),
+      );
+
+      return this.findOne(orderId);
+    });
   }
 
   async cancelOrder(orderId: string, user: User): Promise<{ deleted: true }> {
@@ -414,7 +482,24 @@ export class OrdersService {
 
       // Restore stock for any items that were already sent to kitchen
       const fulfilledItems = order.items.filter((i) => i.status === 'Sent' || i.status === 'Done');
-      for (const item of fulfilledItems) {
+      const resolved = await this.inventoryService.resolveIngredientRequirements(manager, fulfilledItems);
+      const recipeBackedItemIds = new Set(resolved.recipeBackedItemIds);
+
+      if (resolved.requirements.length) {
+        await this.inventoryService.applyIngredientRequirements(
+          manager,
+          this.inventoryService.invertRequirements(resolved.requirements),
+          {
+            actorId: user.id,
+            type: 'ORDER_REPLENISHMENT',
+            referenceType: 'Order',
+            referenceId: orderId,
+            reason: 'Cancel order',
+          },
+        );
+      }
+
+      for (const item of fulfilledItems.filter((entry) => !recipeBackedItemIds.has(entry.id))) {
         await manager.increment(Product, { id: item.productId }, 'stockQty', item.quantity);
       }
 

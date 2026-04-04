@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -14,6 +15,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateModifierDto } from './dto/create-modifier.dto';
+import { ImportProductsDto } from './dto/import-products.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -62,6 +64,14 @@ export class ProductsController {
   @Roles('Admin')
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
+  }
+
+  @Post('products/import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  importProducts(@Body() dto: ImportProductsDto) {
+    if (!dto.rows?.length) throw new BadRequestException('Import requires at least one row');
+    return this.productsService.importProducts(dto);
   }
 
   @Get('products')
