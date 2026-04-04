@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Order } from '../orders/entities/order.entity';
 import { OrderLineItem } from '../orders/entities/order-line-item.entity';
 import { Payment } from '../payments/entities/payment.entity';
@@ -17,26 +17,59 @@ export class ReportingService {
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
   ) {}
 
+  private toNumber(value: unknown): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private toIsoString(value: unknown): string {
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
+  }
+
+  private joinConfirmedPayments<T>(query: SelectQueryBuilder<T>, orderAlias: string, joinAlias = 'paid') {
+    return query.innerJoin(
+      (subQuery) => subQuery
+        .from(Payment, 'payment')
+        .select('payment.orderId', 'orderId')
+        .addSelect('MAX(payment.updatedAt)', 'paidAt')
+        .where("payment.status = 'CONFIRMED'")
+        .groupBy('payment.orderId'),
+      joinAlias,
+      `${joinAlias}.orderId = ${orderAlias}.id`,
+    );
+  }
+
   async getDailySummary(from: string, to: string) {
-    const result = await this.orderRepo
-      .createQueryBuilder('o')
+    const result = await this.joinConfirmedPayments(
+      this.orderRepo.createQueryBuilder('o'),
+      'o',
+    )
       .select([
-        "DATE(o.createdAt) AS date",
-        'COUNT(o.id) AS orderCount',
-        'SUM(o.subtotal) AS subtotal',
-        'SUM(o.tax) AS tax',
-        'SUM(o.discount) AS discount',
-        'SUM(o.tip) AS tip',
-        'SUM(o.total) AS total',
+        'DATE(paid.paidAt) AS "date"',
+        'COUNT(o.id) AS "orderCount"',
+        'SUM(o.subtotal) AS "subtotal"',
+        'SUM(o.tax) AS "tax"',
+        'SUM(o.discount) AS "discount"',
+        'SUM(o.tip) AS "tip"',
+        'SUM(o.total) AS "total"',
       ])
       .where("o.status = 'Paid'")
-      .andWhere('o.createdAt >= :from', { from })
-      .andWhere('o.createdAt <= :to', { to })
-      .groupBy("DATE(o.createdAt)")
-      .orderBy("DATE(o.createdAt)", 'DESC')
+      .andWhere('paid.paidAt >= :from', { from })
+      .andWhere('paid.paidAt <= :to', { to })
+      .groupBy('DATE(paid.paidAt)')
+      .orderBy('DATE(paid.paidAt)', 'DESC')
       .getRawMany();
 
-    return result;
+    return result.map((row: Record<string, unknown>) => ({
+      date: this.toIsoString(row.date),
+      orderCount: this.toNumber(row.orderCount ?? row.ordercount),
+      subtotal: this.toNumber(row.subtotal),
+      tax: this.toNumber(row.tax),
+      discount: this.toNumber(row.discount),
+      tip: this.toNumber(row.tip),
+      total: this.toNumber(row.total),
+    }));
   }
 
   async getSessionSummary(sessionId: string) {
@@ -55,7 +88,7 @@ export class ReportingService {
       .innerJoin('orders', 'o', 'o.id = p.orderId')
       .where('o.sessionId = :sessionId', { sessionId })
       .andWhere("p.status = 'CONFIRMED'")
-      .select(['p.method AS method', 'SUM(p.amount) AS total'])
+      .select(['p.method AS "method"', 'SUM(p.amount) AS "total"'])
       .groupBy('p.method')
       .getRawMany();
 
@@ -69,46 +102,82 @@ export class ReportingService {
       paidOrders: orders.filter((o) => o.status === 'Paid').length,
       voidedOrders: orders.filter((o) => o.status === 'Voided').length,
       totalRevenue,
-      paymentBreakdown: payments,
-      discrepancy: session?.discrepancy,
+      paymentBreakdown: payments.map((payment: Record<string, unknown>) => ({
+        method: String(payment.method ?? ''),
+        total: this.toNumber(payment.total),
+      })),
+      discrepancy: session?.discrepancy != null ? this.toNumber(session.discrepancy) : null,
     };
   }
 
   async getProductPerformance(from: string, to: string) {
-    return this.itemRepo
-      .createQueryBuilder('i')
+    const modifierRevenueSql = `
+      COALESCE(
+        (
+          SELECT SUM((modifier->>'price')::numeric)
+          FROM jsonb_array_elements(i.modifiers) AS modifier
+        ),
+        0
+      )
+    `;
+
+    const result = await this.joinConfirmedPayments(
+      this.itemRepo.createQueryBuilder('i')
       .innerJoin('orders', 'o', 'o.id = i.orderId')
+      ,
+      'o',
+    )
       .where("o.status = 'Paid'")
       .andWhere("i.status != 'Voided'")
-      .andWhere('o.createdAt >= :from', { from })
-      .andWhere('o.createdAt <= :to', { to })
+      .andWhere('paid.paidAt >= :from', { from })
+      .andWhere('paid.paidAt <= :to', { to })
       .select([
-        'i.productId AS productId',
-        'i.productName AS name',
-        'SUM(i.quantity) AS totalQty',
-        'SUM(i.unitPrice * i.quantity) AS revenue',
+        'i.productId AS "productId"',
+        'i.productName AS "name"',
+        'SUM(i.quantity) AS "totalQty"',
+        `SUM((i.unitPrice + ${modifierRevenueSql}) * i.quantity) AS "revenue"`,
       ])
       .groupBy('i.productId, i.productName')
       .orderBy('revenue', 'DESC')
       .getRawMany();
+
+    return result.map((row: Record<string, unknown>) => ({
+      productId: String(row.productId ?? row.productid ?? ''),
+      name: String(row.name ?? ''),
+      totalQty: this.toNumber(row.totalQty ?? row.totalqty),
+      revenue: this.toNumber(row.revenue),
+    }));
   }
 
   async getHourlyHeatmap(from: string, to: string) {
-    return this.orderRepo
-      .createQueryBuilder('o')
+    const dayOfWeekExpr = 'EXTRACT(DOW FROM paid.paidAt)';
+    const slotExpr = 'FLOOR(EXTRACT(HOUR FROM paid.paidAt) * 2 + EXTRACT(MINUTE FROM paid.paidAt) / 30)';
+
+    const result = await this.joinConfirmedPayments(
+      this.orderRepo.createQueryBuilder('o'),
+      'o',
+    )
       .where("o.status = 'Paid'")
-      .andWhere('o.createdAt >= :from', { from })
-      .andWhere('o.createdAt <= :to', { to })
+      .andWhere('paid.paidAt >= :from', { from })
+      .andWhere('paid.paidAt <= :to', { to })
       .select([
-        'EXTRACT(DOW FROM o.createdAt) AS dayOfWeek',
-        'FLOOR(EXTRACT(HOUR FROM o.createdAt) * 2 + EXTRACT(MINUTE FROM o.createdAt) / 30) AS slot',
-        'COUNT(o.id) AS orderCount',
-        'SUM(o.total) AS revenue',
+        `${dayOfWeekExpr} AS "dayOfWeek"`,
+        `${slotExpr} AS "slot"`,
+        'COUNT(o.id) AS "orderCount"',
+        'SUM(o.total) AS "revenue"',
       ])
-      .groupBy('dayOfWeek, slot')
-      .orderBy('dayOfWeek', 'ASC')
-      .addOrderBy('slot', 'ASC')
+      .groupBy(dayOfWeekExpr)
+      .addGroupBy(slotExpr)
+      .orderBy(dayOfWeekExpr, 'ASC')
+      .addOrderBy(slotExpr, 'ASC')
       .getRawMany();
+
+    return result.map((row: Record<string, unknown>) => ({
+      dayOfWeek: this.toNumber(row.dayOfWeek ?? row.dayofweek),
+      slot: this.toNumber(row.slot),
+      orderCount: this.toNumber(row.orderCount ?? row.ordercount),
+      revenue: this.toNumber(row.revenue),
+    }));
   }
 
   async getAuditTrail(query: { from?: string; to?: string; action?: string }) {
@@ -126,20 +195,27 @@ export class ReportingService {
 
   async getTableTurnover(from: string, to: string) {
     // Seat-to-pay: time from first item sent to payment confirmed
-    return this.orderRepo
-      .createQueryBuilder('o')
-      .innerJoin('payments', 'p', "p.orderId = o.id AND p.status = 'CONFIRMED'")
+    const result = await this.joinConfirmedPayments(
+      this.orderRepo.createQueryBuilder('o'),
+      'o',
+    )
       .where("o.status = 'Paid'")
       .andWhere('o.tableId IS NOT NULL')
-      .andWhere('o.createdAt >= :from', { from })
-      .andWhere('o.createdAt <= :to', { to })
+      .andWhere('paid.paidAt >= :from', { from })
+      .andWhere('paid.paidAt <= :to', { to })
       .select([
-        'o.tableId AS tableId',
-        'COUNT(o.id) AS turnovers',
-        'AVG(EXTRACT(EPOCH FROM (p.updatedAt - o.createdAt)) / 60) AS avgMinutes',
+        'o.tableId AS "tableId"',
+        'COUNT(o.id) AS "turnovers"',
+        'AVG(EXTRACT(EPOCH FROM (paid.paidAt - o.createdAt)) / 60) AS "avgMinutes"',
       ])
       .groupBy('o.tableId')
       .orderBy('turnovers', 'DESC')
       .getRawMany();
+
+    return result.map((row: Record<string, unknown>) => ({
+      tableId: String(row.tableId ?? row.tableid ?? ''),
+      turnovers: this.toNumber(row.turnovers),
+      avgMinutes: this.toNumber(row.avgMinutes ?? row.avgminutes),
+    }));
   }
 }

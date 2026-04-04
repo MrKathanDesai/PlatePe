@@ -67,7 +67,7 @@ export class PaymentsService {
       const payments = await manager.find(Payment, {
         where: { orderId: payment.orderId, status: 'CONFIRMED' },
       });
-      const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0) + Number(payment.amount);
+      const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
 
       if (totalPaid >= Number(order.total)) {
         await manager.update(Order, order.id, { status: 'Paid' });

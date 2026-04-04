@@ -6,6 +6,7 @@ import { getKDSSocket } from '../api/kds';
 import type { DailyReport, ProductReport, AuditLog, HourlyHeatmap, Session } from '../types';
 
 type Tab = 'Daily' | 'Products' | 'Audit' | 'Sessions' | 'Heatmap' | 'Turnover';
+type ReportRange = 'today' | '7d' | '30d';
 
 
 function MetricCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -18,13 +19,63 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub?:
   );
 }
 
-function DailyTab() {
+function startOfTodayISO() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function endOfTodayISO() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
+function startOfPastDayISO(daysBackInclusive: number) {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - daysBackInclusive);
+  return d.toISOString();
+}
+
+function getRangeParams(range: ReportRange) {
+  if (range === 'today') {
+    return { from: startOfTodayISO(), to: endOfTodayISO() };
+  }
+
+  if (range === '7d') {
+    return { from: startOfPastDayISO(6), to: endOfTodayISO() };
+  }
+
+  return { from: startOfPastDayISO(29), to: endOfTodayISO() };
+}
+
+function getRangeLabel(range: ReportRange) {
+  switch (range) {
+    case 'today': return 'Today';
+    case '7d': return '7D';
+    case '30d': return '30D';
+    default: return '30D';
+  }
+}
+
+function getRangeTitle(range: ReportRange) {
+  switch (range) {
+    case 'today': return 'Today';
+    case '7d': return 'Last 7 Days';
+    case '30d': return 'Last 30 Days';
+    default: return 'Last 30 Days';
+  }
+}
+
+function DailyTab({ range }: { range: ReportRange }) {
   const [rows, setRows] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchRows = useCallback(() => {
-    reportsApi.daily().then((r) => setRows(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    reportsApi.daily(getRangeParams(range)).then((r) => setRows(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [range]);
 
   useEffect(() => { fetchRows(); }, [fetchRows]);
 
@@ -50,12 +101,12 @@ function DailyTab() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
-        <MetricCard label="Revenue (30d)"   value={`₹${totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-        <MetricCard label="Orders (30d)"    value={`${totalOrders}`} />
-        <MetricCard label="Avg Order Value" value={`₹${avgOrder.toFixed(0)}`} />
+        <MetricCard label={`Revenue (${getRangeLabel(range)})`}   value={`₹${totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+        <MetricCard label={`Orders (${getRangeLabel(range)})`}    value={`${totalOrders}`} />
+        <MetricCard label={`Avg Order Value (${getRangeLabel(range)})`} value={`₹${avgOrder.toFixed(0)}`} />
       </div>
       <div className="card">
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Revenue — Last 14 Days</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Revenue — {getRangeTitle(range)}</div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -90,17 +141,19 @@ function DailyTab() {
   );
 }
 
-function ProductsTab() {
+function ProductsTab({ range }: { range: ReportRange }) {
   const [products, setProducts] = useState<ProductReport[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    reportsApi.products().then((r) => setProducts(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    reportsApi.products(getRangeParams(range)).then((r) => setProducts(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [range]);
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   const maxRev = Math.max(...products.map((p) => p.revenue), 1);
   return (
     <div>
       <div className="card">
+        <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 14 }}>Showing top products for {getRangeTitle(range).toLowerCase()}.</div>
         <div style={{ marginBottom: 20 }}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={products.slice(0, 10)} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -170,12 +223,13 @@ function AuditTab() {
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function HeatmapTab() {
+function HeatmapTab({ range }: { range: ReportRange }) {
   const [data, setData] = useState<HourlyHeatmap[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    reportsApi.hourlyHeatmap().then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    reportsApi.hourlyHeatmap(getRangeParams(range)).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [range]);
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   const maxCount = Math.max(...data.map((d) => d.orderCount), 1);
   // Build a 7×48 grid (day × 30-min slot)
@@ -184,7 +238,7 @@ function HeatmapTab() {
   const hours = Array.from({ length: 48 }, (_, i) => i);
   return (
     <div className="card" style={{ overflowX: 'auto' }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Orders by Hour & Day (30-min slots)</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>Orders by Hour & Day ({getRangeTitle(range)})</div>
       <div style={{ display: 'grid', gridTemplateColumns: `60px repeat(48, 1fr)`, gap: 2, minWidth: 900 }}>
         {/* Header row */}
         <div />
@@ -303,12 +357,13 @@ function SessionsTab() {
   );
 }
 
-function TurnoverTab() {
+function TurnoverTab({ range }: { range: ReportRange }) {
   const [data, setData] = useState<{ tableId: string; turnovers: number; avgMinutes: number }[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    reportsApi.tableTurnover().then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    reportsApi.tableTurnover(getRangeParams(range)).then((r) => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [range]);
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -331,6 +386,8 @@ function TurnoverTab() {
 
 export default function ReportingScreen() {
   const [tab, setTab] = useState<Tab>('Daily');
+  const [range, setRange] = useState<ReportRange>('30d');
+  const supportsRange = tab === 'Daily' || tab === 'Products' || tab === 'Heatmap' || tab === 'Turnover';
   return (
     <div style={{ padding: 32, maxWidth: 1100 }}>
       <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 300, color: 'var(--text)', margin: '0 0 22px', letterSpacing: '-0.02em' }}>
@@ -341,12 +398,25 @@ export default function ReportingScreen() {
           <button key={t} className={`btn ${tab === t ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 13 }} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
-      {tab === 'Daily'    && <DailyTab />}
-      {tab === 'Products' && <ProductsTab />}
+      {supportsRange && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+          {([
+            ['today', 'Today'],
+            ['7d', 'Last 7D'],
+            ['30d', 'Last 30D'],
+          ] as [ReportRange, string][]).map(([value, label]) => (
+            <button key={value} className={`btn ${range === value ? 'btn-primary' : 'btn-ghost'}`} style={{ fontSize: 12 }} onClick={() => setRange(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'Daily'    && <DailyTab range={range} />}
+      {tab === 'Products' && <ProductsTab range={range} />}
       {tab === 'Audit'    && <AuditTab />}
       {tab === 'Sessions' && <SessionsTab />}
-      {tab === 'Heatmap'  && <HeatmapTab />}
-      {tab === 'Turnover' && <TurnoverTab />}
+      {tab === 'Heatmap'  && <HeatmapTab range={range} />}
+      {tab === 'Turnover' && <TurnoverTab range={range} />}
     </div>
   );
 }

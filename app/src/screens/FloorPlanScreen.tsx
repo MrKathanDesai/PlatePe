@@ -34,7 +34,7 @@ function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onC
         background: s.bg,
         border: `1px solid ${s.border}`,
         borderRadius: 12,
-        padding: '18px 16px',
+        padding: '12px 14px', // Reduced padding
         cursor: readonly ? 'default' : 'pointer',
         textAlign: 'left',
         width: '100%',
@@ -45,10 +45,10 @@ function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onC
       onMouseEnter={(e) => { if (!readonly) (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-md)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-xs)'; }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
         <div style={{
           fontFamily: 'var(--font-display)',
-          fontSize: 26,
+          fontSize: 22, // Slightly smaller font
           fontWeight: 300,
           color: 'var(--text)',
           letterSpacing: '-0.02em',
@@ -59,7 +59,7 @@ function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onC
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot, marginTop: 4, flexShrink: 0 }} />
       </div>
 
-      <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 2 }}>
         {table.seats} seats
       </div>
 
@@ -68,7 +68,7 @@ function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onC
       </div>
 
       {table.status === 'Occupied' && table.currentBill != null && (
-        <div style={{ fontSize: 15, color: 'var(--text)', fontWeight: 600, marginTop: 8 }}>
+        <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600, marginTop: 4 }}>
           ₹{Number(table.currentBill).toFixed(0)}
         </div>
       )}
@@ -98,7 +98,6 @@ export default function FloorPlanScreen() {
   const [takeawayLoading, setTakeawayLoading] = useState(false);
   const [transferFrom, setTransferFrom] = useState<Table | null>(null);
   const [transferring, setTransferring] = useState(false);
-  const isServer = user?.role === 'Server';
   const isCashier = user?.role === 'Cashier';
 
   useEffect(() => { refreshTables(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -126,12 +125,17 @@ export default function FloorPlanScreen() {
         navigate('Order');
       } else if (table.currentOrderId) {
         const res = await ordersApi.getById(table.currentOrderId);
-        setActiveOrder(res.data);
-        navigate(isServer && res.data.status === 'Sent' ? 'Order' : 'Order');
+        // If the order was already paid, refresh tables and don't navigate
+        if (res.data.status === 'Paid' || res.data.status === 'Voided') {
+          await refreshTables();
+          showToast('Table is now available');
+        } else {
+          setActiveOrder(res.data);
+          navigate('Order');
+        }
       } else {
-        const res = await ordersApi.create({ tableId: table.id, sessionId: session.id });
-        setActiveOrder(res.data);
-        navigate('Order');
+        // Table is occupied but has no order — stale state, just refresh
+        await refreshTables();
       }
     } catch {
       showToast('Failed to open order');
@@ -251,8 +255,11 @@ export default function FloorPlanScreen() {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-          gap: 14, overflowY: 'auto', flex: 1,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+          gap: 14, 
+          overflowY: 'auto', 
+          flex: 1,
+          alignContent: 'start', // Prevent rows from stretching to fill the flex container
         }}>
           {filtered.map((table) => (
             <TableCard key={table.id} table={table} onClick={() => handleTableClick(table)} readonly={isCashier}

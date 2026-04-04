@@ -158,15 +158,22 @@ export default function OrderScreen() {
   const addItem = async (product: Product, modifiers: Modifier[] = []) => {
     if (!order) { showToast('No active order'); return; }
     // If product has modifiers and none chosen yet, open modifier picker
-    if (product.modifiers && product.modifiers.length > 0 && modifiers.length === 0) {
+    if (
+      product.modifiers &&
+      product.modifiers.length > 0 &&
+      modifiers.length === 0 &&
+      modifierProduct?.id !== product.id
+    ) {
       setModifierProduct(product);
       setSelectedModifiers([]);
       return;
     }
+
     const modifierTotal = modifiers.reduce((s, m) => s + Number(m.price), 0);
     const existing = activeItems.find(
       (i) => i.productId === product.id && i.modifiers?.length === 0 && modifiers.length === 0
     );
+
     try {
       if (existing && modifiers.length === 0) {
         await ordersApi.updateItemQty(order.id, existing.id, existing.quantity + 1);
@@ -188,11 +195,9 @@ export default function OrderScreen() {
 
   const confirmModifiers = () => {
     if (!modifierProduct) return;
-    const product = modifierProduct;
+    addItem(modifierProduct, selectedModifiers);
     setModifierProduct(null);
-    addItem(product, selectedModifiers);
   };
-
   const toggleModifier = (mod: Modifier) => {
     setSelectedModifiers((prev) =>
       prev.find((m) => m.id === mod.id) ? prev.filter((m) => m.id !== mod.id) : [...prev, mod]
@@ -443,13 +448,19 @@ export default function OrderScreen() {
               })}
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => confirmModifiers()}>
-                Skip & Add
+              <button
+                className="btn btn-ghost"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  addItem(modifierProduct, []);
+                  setModifierProduct(null);
+                }}
+              >
+                Skip
               </button>
               <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmModifiers}>
                 Add to Order
-                {selectedModifiers.length > 0 && (
-                  <span style={{ fontSize: 11, opacity: 0.85 }}>
+                {selectedModifiers.length > 0 && (                  <span style={{ fontSize: 11, opacity: 0.85 }}>
                     {' '}+₹{selectedModifiers.reduce((s, m) => s + Number(m.price), 0).toFixed(0)}
                   </span>
                 )}

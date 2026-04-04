@@ -40,8 +40,8 @@ export class OrdersService {
     const subtotal = items
       .filter((i) => i.status !== 'Voided')
       .reduce((sum, i) => {
-        const modsTotal = (i.modifiers ?? []).reduce((m, mod) => m + mod.price, 0);
-        return sum + (i.unitPrice + modsTotal) * i.quantity;
+        // unitPrice already includes modifier prices (set by the client at add time)
+        return sum + Number(i.unitPrice) * i.quantity;
       }, 0);
     const tax = subtotal * 0.05;
     const total = subtotal + tax - discount + tip;

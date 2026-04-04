@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { AlertTriangle, Plus, X, TrendingUp, ShoppingBag, Layers } from 'lucide-react';
+import { AlertTriangle, Plus, X, TrendingUp, ShoppingBag, Layers, ChevronDown, ChevronUp, Minus, Trash2, Ban } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { reportsApi } from '../api/reports';
 import { ordersApi } from '../api/orders';
@@ -8,8 +8,7 @@ import { inventoryApi } from '../api/inventory';
 import { getKDSSocket } from '../api/kds';
 import type { DailyReport, Order, Terminal, InventoryItem } from '../types';
 
-function todayISO() {
-  const d = new Date();
+function todayISO() {  const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d.toISOString();
 }
@@ -50,10 +49,21 @@ export default function DashboardScreen() {
   const [openingBalance, setOpeningBalance] = useState('0');
   const [closingBalance, setClosingBalance] = useState('');
   const [sessionLoading, setSessionLoading] = useState(false);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchStats = useCallback(() => {
     reportsApi.daily({ from: todayISO(), to: tomorrowISO() }).then((r) => setTodayRows(r.data)).catch(() => {});
   }, []);
+
+  const loadRecentOrders = useCallback(() => {
+    if (!session) {
+      setRecentOrders([]);
+      return;
+    }
+
+    ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+  }, [session]);
 
   useEffect(() => {
     fetchStats();
@@ -62,22 +72,40 @@ export default function DashboardScreen() {
   }, [fetchStats]);
 
   useEffect(() => {
-    if (!session) return;
-    ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
-  }, [session]);
+    loadRecentOrders();
+  }, [loadRecentOrders]);
+
+  useEffect(() => {
+    const refresh = () => {
+      fetchStats();
+      loadRecentOrders();
+    };
+
+    const intervalId = window.setInterval(refresh, 15000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [fetchStats, loadRecentOrders]);
 
   // Re-fetch stats whenever an order is paid
   useEffect(() => {
     const socket = getKDSSocket();
     const handler = () => {
       fetchStats();
-      if (session) {
-        ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
-      }
+      loadRecentOrders();
     };
     socket.on('order:paid', handler);
     return () => { socket.off('order:paid', handler); };
-  }, [session, fetchStats]);
+  }, [fetchStats, loadRecentOrders]);
 
   const occupiedCount = tables.filter((t) => t.status === 'Occupied').length;
 
@@ -143,7 +171,7 @@ export default function DashboardScreen() {
           value={`₹${totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
           sub={`${totalOrders} orders placed`}
         />
-        <StatCard icon={<ShoppingBag size={20} />} label="Avg Order Value"
+        <StatCard icon={<ShoppingBag size={20} />} label="Today's Avg Order Value"
           value={`₹${avgOrder.toFixed(0)}`}
         />
         <StatCard icon={<Layers size={20} />} label="Active Tables"
@@ -222,34 +250,140 @@ export default function DashboardScreen() {
         </div>
 
         {/* Recent Orders */}
-        <div className="card">
-          <h2 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
-            Recent Orders
-          </h2>
+        <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Recent Orders</h2>
+          </div>
           {recentOrders.length === 0 ? (
-            <p style={{ fontSize: 13, color: 'var(--text-3)', padding: '20px 0' }}>
+            <p style={{ fontSize: 13, color: 'var(--text-3)', padding: '20px' }}>
               {session ? 'No orders yet this session.' : 'Open a session to start taking orders.'}
             </p>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr><th>Order #</th><th>Table</th><th>Status</th><th>Items</th><th style={{ textAlign: 'right' }}>Total</th></tr>
-              </thead>
-              <tbody>
-                {recentOrders.map((order) => (
-                  <tr key={order.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600 }}>#{order.orderNumber}</td>
-                    <td>{order.tableId ? tables.find((t) => t.id === order.tableId)?.number ?? '—' : 'Takeaway'}</td>
-                    <td><span className={`badge ${getOrderBadge(order.status)}`}>{order.status}</span></td>
-                    <td>{order.items?.length ?? 0}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 600 }}>₹{Number(order.total).toFixed(0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div>
+              {recentOrders.map((order) => {
+                const isExpanded = expandedOrderId === order.id;
+                const isEditable = order.status === 'Open' || order.status === 'Sent';
+                const nonVoidedItems = (order.items ?? []).filter((i) => i.status !== 'Voided');
+
+                const handleVoidOrder = async () => {
+                  if (!window.confirm(`Void order #${order.orderNumber}? This cannot be undone.`)) return;
+                  setActionLoading(`void-${order.id}`);
+                  try {
+                    await ordersApi.void(order.id);
+                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+                    fetchStats();
+                    showToast('Order voided');
+                  } catch { showToast('Failed to void order'); }
+                  finally { setActionLoading(null); }
+                };
+
+                const handleVoidItem = async (itemId: string) => {
+                  setActionLoading(`item-${itemId}`);
+                  try {
+                    await ordersApi.voidItem(order.id, itemId, 'Voided from dashboard');
+                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+                  } catch { showToast('Failed to void item'); }
+                  finally { setActionLoading(null); }
+                };
+
+                const handleUpdateQty = async (itemId: string, currentQty: number, delta: number) => {
+                  const newQty = currentQty + delta;
+                  setActionLoading(`item-${itemId}`);
+                  try {
+                    if (newQty <= 0) {
+                      await ordersApi.removeItem(order.id, itemId);
+                    } else {
+                      await ordersApi.updateItemQty(order.id, itemId, newQty);
+                    }
+                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+                  } catch { showToast('Failed to update item'); }
+                  finally { setActionLoading(null); }
+                };
+
+                return (
+                  <div key={order.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    {/* Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', cursor: 'pointer' }}
+                      onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>#{order.orderNumber}</span>
+                      <span className={`badge ${getOrderBadge(order.status)}`}>{order.status}</span>
+                      {order.tableId && (
+                        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                          T{tables.find((t) => t.id === order.tableId)?.number ?? order.tableId}
+                        </span>
+                      )}
+                      <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                        ₹{Number(order.total).toFixed(0)}
+                      </span>
+                      {isEditable && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleVoidOrder(); }}
+                          disabled={actionLoading === `void-${order.id}`}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4, display: 'flex', alignItems: 'center' }}
+                          title="Void order"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                      <span style={{ color: 'var(--text-3)', display: 'flex', alignItems: 'center' }}>
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </span>
+                    </div>
+
+                    {/* Expanded items */}
+                    {isExpanded && (
+                      <div style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)', padding: '10px 20px' }}>
+                        {nonVoidedItems.length === 0 ? (
+                          <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>All items voided</p>
+                        ) : nonVoidedItems.map((item) => {
+                          const isItemLoading = actionLoading === `item-${item.id}`;
+                          return (
+                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                              <span style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>{item.productName}</span>
+                              {isEditable ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <button
+                                    onClick={() => handleUpdateQty(item.id, item.quantity, -1)}
+                                    disabled={isItemLoading}
+                                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)' }}>
+                                    <Minus size={9} />
+                                  </button>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', minWidth: 18, textAlign: 'center' }}>
+                                    {isItemLoading ? '…' : item.quantity}
+                                  </span>
+                                  <button
+                                    onClick={() => handleUpdateQty(item.id, item.quantity, 1)}
+                                    disabled={isItemLoading}
+                                    style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 5, width: 22, height: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-2)' }}>
+                                    <Plus size={9} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>×{item.quantity}</span>
+                              )}
+                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', minWidth: 48, textAlign: 'right' }}>
+                                ₹{(Number(item.unitPrice) * item.quantity).toFixed(0)}
+                              </span>
+                              {isEditable && (
+                                <button
+                                  onClick={() => handleVoidItem(item.id)}
+                                  disabled={isItemLoading}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 2, display: 'flex', alignItems: 'center' }}
+                                  title="Void item">
+                                  <Ban size={11} />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
-        </div>
-      </div>
+        </div>      </div>
 
       {/* Session modal */}
       {showSessionModal && (
@@ -267,7 +401,14 @@ export default function DashboardScreen() {
               <select className="input" value={selectedTerminalId} onChange={(e) => setSelectedTerminalId(e.target.value)}>
                 <option value="">Select terminal…</option>
                 {terminals.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}{t.location ? ` (${t.location})` : ''}</option>
+                  <option key={t.id} value={t.id} disabled={t.isLocked && t.lockedByUserId !== user?.id}>
+                    {t.name}{t.location ? ` (${t.location})` : ''}
+                    {t.isLocked
+                      ? t.lockedByUserId === user?.id
+                        ? ' · Your active terminal'
+                        : ` · In use${t.lockedByUserName ? ` by ${t.lockedByUserName}` : ''}`
+                      : ''}
+                  </option>
                 ))}
               </select>
             </div>
@@ -275,6 +416,11 @@ export default function DashboardScreen() {
               <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 6, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Opening Balance (₹)</label>
               <input className="input" type="number" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} min="0" />
             </div>
+            {terminals.some((t) => t.isLocked && t.lockedByUserId !== user?.id) && (
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14 }}>
+                Terminals already in use by someone else are shown as unavailable in the list.
+              </p>
+            )}
             {terminals.length === 0 && (
               <p style={{ fontSize: 12, color: 'var(--amber)', marginBottom: 14 }}>No terminals found. Add one in Settings first.</p>
             )}

@@ -17,6 +17,7 @@ export interface Terminal {
   location: string | null;
   isLocked: boolean;
   lockedByUserId: string | null;
+  lockedByUserName?: string | null;
   createdAt: string;
 }
 

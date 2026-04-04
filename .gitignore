@@ -27,7 +27,7 @@ yarn-error.log*
 .DS_Store
 .DS_Store?
 ._*
-Thumbs.db
+Thumb.db
 
 # Editor / IDE
 .vscode/
@@ -40,14 +40,12 @@ Thumbs.db
 slate.json
 metadata.json
 
-# Misc junk files
+# Data / design artifacts
 *.numbers
 pos_complete_master_workflow.html
 pos_wireframes_all_screens.html
-CODEBASE_SUMMARY.md
 cafe_menu.csv
 food-menu*.csv
 
-# Keep .env.example
-!.env.example
+# Keep backend env example
 !backend/.env.example

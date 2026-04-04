@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Table, TableStatus } from './entities/table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
+import { Order } from '../orders/entities/order.entity';
 
 @Injectable()
 export class TablesService {
   constructor(
     @InjectRepository(Table) private tableRepo: Repository<Table>,
+    @InjectRepository(Order) private orderRepo: Repository<Order>,
   ) {}
 
   async create(dto: CreateTableDto) {
@@ -29,20 +31,36 @@ export class TablesService {
   }
 
   async updateStatus(id: string, status: TableStatus, currentOrderId?: string, currentBill?: number) {
-    const update: Record<string, unknown> = { status };
-    if (status === 'Occupied') {
-      update.occupiedSince = new Date();
-      if (currentOrderId) update.currentOrderId = currentOrderId;
-    }
-    if (status === 'Available') {
-      update.occupiedSince = null;
-      update.currentOrderId = null;
-      update.currentBill = null;
-    }
-    if (currentBill !== undefined) update.currentBill = currentBill;
+    return this.tableRepo.manager.transaction(async (manager) => {
+      const table = await manager.findOne(Table, { where: { id } });
+      if (!table) throw new NotFoundException('Table not found');
 
-    await this.tableRepo.update(id, update as any);
-    return this.findOne(id);
+      const update: Record<string, unknown> = { status };
+      if (status === 'Occupied') {
+        update.occupiedSince = new Date();
+        if (currentOrderId) update.currentOrderId = currentOrderId;
+      }
+      if (status === 'Available') {
+        update.occupiedSince = null;
+        update.currentOrderId = null;
+        update.currentBill = null;
+
+        // Manually freeing a table should also detach any still-open tickets from it,
+        // otherwise the floor plan clears while the order remains ghost-linked.
+        await manager.update(
+          Order,
+          { tableId: id, status: In(['Open', 'Sent'] as const) },
+          { tableId: null } as any,
+        );
+      }
+      if (currentBill !== undefined) update.currentBill = currentBill;
+
+      await manager.update(Table, id, update as any);
+
+      const updated = await manager.findOne(Table, { where: { id } });
+      if (!updated) throw new NotFoundException('Table not found');
+      return updated;
+    });
   }
 
   async transferOrder(fromId: string, toId: string, orderId: string) {
@@ -63,6 +81,9 @@ export class TablesService {
       occupiedSince: new Date(),
       currentOrderId: orderId,
     } as any);
+
+    // Update the order's tableId so payment clearing logic targets the correct table
+    await this.orderRepo.update(orderId, { tableId: toId });
 
     return this.findOne(toId);
   }

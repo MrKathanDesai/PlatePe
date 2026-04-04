@@ -83,7 +83,9 @@ export default function TerminalsTab() {
                 <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{t.location ?? '—'}</td>
                 <td>
                   <span className={`badge ${t.isLocked ? 'badge-amber' : 'badge-green'}`}>
-                    {t.isLocked ? 'In Use' : 'Available'}
+                    {t.isLocked
+                      ? `In Use${t.lockedByUserName ? ` · ${t.lockedByUserName}` : ''}`
+                      : 'Available'}
                   </span>
                 </td>
               </tr>

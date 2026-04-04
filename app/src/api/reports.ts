@@ -8,8 +8,8 @@ export const reportsApi = {
   products: (params?: { from?: string; to?: string }) =>
     client.get<ProductReport[]>('/reports/products', { params }),
 
-  hourlyHeatmap: () =>
-    client.get<HourlyHeatmap[]>('/reports/hourly-heatmap'),
+  hourlyHeatmap: (params?: { from?: string; to?: string }) =>
+    client.get<HourlyHeatmap[]>('/reports/hourly-heatmap', { params }),
 
   audit: (params?: { action?: string; limit?: number }) =>
     client.get<AuditLog[]>('/reports/audit', { params }),
