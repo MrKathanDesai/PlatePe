@@ -3,8 +3,6 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
 } from 'firebase/auth';
 import type { ConfirmationResult } from 'firebase/auth';
 import { auth, firebaseAuthEnabled } from '../firebase';
