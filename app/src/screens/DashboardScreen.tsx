@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import { AlertTriangle, Plus, X, TrendingUp, ShoppingBag, Layers, ChevronDown, ChevronUp, Minus, Trash2, Ban } from 'lucide-react';
 import { useApp } from '../store/AppContext';
 import { reportsApi } from '../api/reports';
@@ -17,6 +17,22 @@ function tomorrowISO() {
   const d = new Date();
   d.setHours(23, 59, 59, 999);
   return d.toISOString();
+}
+
+function isOrderPlacedToday(createdAt: string) {
+  const created = new Date(createdAt);
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return created >= start && created < end;
+}
+
+function formatOrderTime(createdAt: string) {
+  return new Date(createdAt).toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
@@ -42,6 +58,7 @@ export default function DashboardScreen() {
   const { user, session, setSession, tables, showToast } = useApp();
   const [todayRows, setTodayRows] = useState<DailyReport[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [todayOrders, setTodayOrders] = useState<Order[]>([]);
   const [lowStock, setLowStock] = useState<InventoryItem[]>([]);
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [showSessionModal, setShowSessionModal] = useState(false);
@@ -50,6 +67,7 @@ export default function DashboardScreen() {
   const [closingBalance, setClosingBalance] = useState('');
   const [sessionLoading, setSessionLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [expandedTodayOrderId, setExpandedTodayOrderId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchStats = useCallback(() => {
@@ -62,8 +80,21 @@ export default function DashboardScreen() {
       return;
     }
 
-    ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+    ordersApi.getAll({ sessionId: session.id })
+      .then((r) => setRecentOrders(r.data.filter((order) => order.status !== 'Voided').slice(0, 8)))
+      .catch(() => {});
   }, [session]);
+
+  const loadTodayOrders = useCallback(() => {
+    ordersApi.getAll()
+      .then((r) => setTodayOrders(r.data.filter((order) => isOrderPlacedToday(order.createdAt))))
+      .catch(() => {});
+  }, []);
+
+  const refreshOrderLists = useCallback(() => {
+    loadRecentOrders();
+    loadTodayOrders();
+  }, [loadRecentOrders, loadTodayOrders]);
 
   useEffect(() => {
     fetchStats();
@@ -72,13 +103,13 @@ export default function DashboardScreen() {
   }, [fetchStats]);
 
   useEffect(() => {
-    loadRecentOrders();
-  }, [loadRecentOrders]);
+    refreshOrderLists();
+  }, [refreshOrderLists]);
 
   useEffect(() => {
     const refresh = () => {
       fetchStats();
-      loadRecentOrders();
+      refreshOrderLists();
     };
 
     const intervalId = window.setInterval(refresh, 15000);
@@ -94,18 +125,18 @@ export default function DashboardScreen() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchStats, loadRecentOrders]);
+  }, [fetchStats, refreshOrderLists]);
 
   // Re-fetch stats whenever an order is paid
   useEffect(() => {
     const socket = getKDSSocket();
     const handler = () => {
       fetchStats();
-      loadRecentOrders();
+      refreshOrderLists();
     };
     socket.on('order:paid', handler);
     return () => { socket.off('order:paid', handler); };
-  }, [fetchStats, loadRecentOrders]);
+  }, [fetchStats, refreshOrderLists]);
 
   const occupiedCount = tables.filter((t) => t.status === 'Occupied').length;
 
@@ -141,6 +172,37 @@ export default function DashboardScreen() {
     }
   };
 
+  const handleVoidOrder = async (order: Order) => {
+    if (!window.confirm(`Void order #${order.orderNumber}? This cannot be undone.`)) return;
+    setActionLoading(`void-${order.id}`);
+    try {
+      await ordersApi.void(order.id);
+      refreshOrderLists();
+      fetchStats();
+      showToast('Order voided');
+    } catch {
+      showToast('Failed to void order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteOrder = async (order: Order) => {
+    if (!window.confirm(`Delete order #${order.orderNumber}? This will permanently remove it.`)) return;
+    setActionLoading(`delete-${order.id}`);
+    try {
+      await ordersApi.cancel(order.id);
+      if (expandedOrderId === order.id) setExpandedOrderId(null);
+      if (expandedTodayOrderId === order.id) setExpandedTodayOrderId(null);
+      refreshOrderLists();
+      showToast('Order deleted');
+    } catch {
+      showToast('Failed to delete order');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div style={{ padding: 32, maxWidth: 1140 }}>
       {/* Header */}
@@ -169,7 +231,7 @@ export default function DashboardScreen() {
       <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
         <StatCard icon={<TrendingUp size={20} />} label="Today's Revenue"
           value={`₹${totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-          sub={`${totalOrders} orders placed`}
+          sub={totalOrders === 1 ? '1 order paid today' : `${totalOrders} orders paid today`}
         />
         <StatCard icon={<ShoppingBag size={20} />} label="Today's Avg Order Value"
           value={`₹${avgOrder.toFixed(0)}`}
@@ -265,23 +327,11 @@ export default function DashboardScreen() {
                 const isEditable = order.status === 'Open' || order.status === 'Sent';
                 const nonVoidedItems = (order.items ?? []).filter((i) => i.status !== 'Voided');
 
-                const handleVoidOrder = async () => {
-                  if (!window.confirm(`Void order #${order.orderNumber}? This cannot be undone.`)) return;
-                  setActionLoading(`void-${order.id}`);
-                  try {
-                    await ordersApi.void(order.id);
-                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
-                    fetchStats();
-                    showToast('Order voided');
-                  } catch { showToast('Failed to void order'); }
-                  finally { setActionLoading(null); }
-                };
-
                 const handleVoidItem = async (itemId: string) => {
                   setActionLoading(`item-${itemId}`);
                   try {
                     await ordersApi.voidItem(order.id, itemId, 'Voided from dashboard');
-                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+                    refreshOrderLists();
                   } catch { showToast('Failed to void item'); }
                   finally { setActionLoading(null); }
                 };
@@ -295,7 +345,7 @@ export default function DashboardScreen() {
                     } else {
                       await ordersApi.updateItemQty(order.id, itemId, newQty);
                     }
-                    if (session) ordersApi.getAll({ sessionId: session.id }).then((r) => setRecentOrders(r.data.slice(0, 8))).catch(() => {});
+                    refreshOrderLists();
                   } catch { showToast('Failed to update item'); }
                   finally { setActionLoading(null); }
                 };
@@ -317,7 +367,7 @@ export default function DashboardScreen() {
                       </span>
                       {isEditable && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleVoidOrder(); }}
+                          onClick={(e) => { e.stopPropagation(); handleVoidOrder(order); }}
                           disabled={actionLoading === `void-${order.id}`}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4, display: 'flex', alignItems: 'center' }}
                           title="Void order"
@@ -383,7 +433,155 @@ export default function DashboardScreen() {
               })}
             </div>
           )}
-        </div>      </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Today's Orders</h2>
+          <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            {todayOrders.length === 1 ? '1 order placed today' : `${todayOrders.length} orders placed today`}
+          </span>
+        </div>
+        {todayOrders.length === 0 ? (
+          <p style={{ fontSize: 13, color: 'var(--text-3)', padding: '20px' }}>
+            No orders have been placed yet today.
+          </p>
+        ) : (
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Order</th>
+                  <th>Table</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                  <th style={{ textAlign: 'right' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {todayOrders.map((order) => {
+                  const canVoid = order.status === 'Open' || order.status === 'Sent';
+                  const canDelete = order.status !== 'Paid';
+                  const isDeleting = actionLoading === `delete-${order.id}`;
+                  const isVoiding = actionLoading === `void-${order.id}`;
+                  const isExpanded = expandedTodayOrderId === order.id;
+
+                  return (
+                    <Fragment key={order.id}>
+                      <tr
+                        onClick={() => setExpandedTodayOrderId(isExpanded ? null : order.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{formatOrderTime(order.createdAt)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedTodayOrderId(isExpanded ? null : order.id);
+                            }}
+                            style={{ background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'inherit' }}
+                          >
+                            <span style={{ color: 'var(--text-3)', display: 'flex', alignItems: 'center' }}>
+                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </span>
+                            <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: 'var(--text-2)' }}>
+                              #{order.orderNumber}
+                            </span>
+                          </button>
+                        </td>
+                        <td style={{ color: 'var(--text-3)', fontSize: 12 }}>
+                          {order.tableId ? `T${tables.find((t) => t.id === order.tableId)?.number ?? order.tableId}` : 'Takeaway'}
+                        </td>
+                        <td><span className={`badge ${getOrderBadge(order.status)}`}>{order.status}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {canVoid && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleVoidOrder(order);
+                                }}
+                                disabled={isVoiding || isDeleting}
+                                style={{ fontSize: 11, padding: '4px 8px' }}
+                              >
+                                {isVoiding ? 'Voiding…' : 'Void'}
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteOrder(order);
+                                }}
+                                disabled={isDeleting || isVoiding}
+                                style={{ fontSize: 11, padding: '4px 8px', color: 'var(--red)' }}
+                              >
+                                {isDeleting ? 'Deleting…' : 'Delete'}
+                              </button>
+                            )}
+                            {!canVoid && !canDelete && (
+                              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>—</span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>
+                          ₹{Number(order.total).toFixed(0)}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={6} style={{ padding: 0 }}>
+                            <div style={{ background: 'var(--surface-2)', borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
+                              {order.items.length === 0 ? (
+                                <p style={{ fontSize: 12, color: 'var(--text-3)', margin: 0 }}>No items on this order.</p>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  {order.items.map((item) => (
+                                    <div key={item.id} style={{ borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                          {item.quantity} × {item.productName}
+                                        </span>
+                                        <span className={`badge ${getLineItemBadge(item.status, order.status)}`}>
+                                          {getLineItemStatusLabel(item.status, order.status)}
+                                        </span>
+                                        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                                          ₹{(Number(item.unitPrice) * item.quantity).toFixed(0)}
+                                        </span>
+                                      </div>
+                                      {item.modifiers.length > 0 && (
+                                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+                                          Modifiers: {item.modifiers.map((modifier) => modifier.name).join(', ')}
+                                        </div>
+                                      )}
+                                      {item.note && (
+                                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
+                                          Note: {item.note}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Session modal */}
       {showSessionModal && (
@@ -448,6 +646,27 @@ function getOrderBadge(status: string) {
   switch (status) {
     case 'Paid': return 'badge-green';
     case 'Sent': case 'Open': return 'badge-amber';
+    case 'Voided': return 'badge-red';
+    default: return 'badge-muted';
+  }
+}
+
+function getResolvedLineItemStatus(itemStatus: string, orderStatus: string) {
+  if (itemStatus === 'Voided') return 'Voided';
+  if (orderStatus === 'Paid') return 'Completed';
+  return itemStatus;
+}
+
+function getLineItemStatusLabel(itemStatus: string, orderStatus: string) {
+  return getResolvedLineItemStatus(itemStatus, orderStatus);
+}
+
+function getLineItemBadge(itemStatus: string, orderStatus: string) {
+  switch (getResolvedLineItemStatus(itemStatus, orderStatus)) {
+    case 'Completed':
+    case 'Done': return 'badge-green';
+    case 'Sent': return 'badge-accent';
+    case 'Pending': return 'badge-amber';
     case 'Voided': return 'badge-red';
     default: return 'badge-muted';
   }

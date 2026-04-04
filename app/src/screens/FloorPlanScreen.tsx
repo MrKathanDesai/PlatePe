@@ -24,26 +24,51 @@ function statusStyle(status: TableStatus): { border: string; bg: string; dot: st
   }
 }
 
-function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onClick: () => void; readonly?: boolean; onTransfer?: () => void }) {
+function TableCard({
+  table,
+  onClick,
+  readonly,
+  onTransfer,
+  onFree,
+  freeing,
+}: {
+  table: Table;
+  onClick: () => void;
+  readonly?: boolean;
+  onTransfer?: () => void;
+  onFree?: () => void;
+  freeing?: boolean;
+}) {
   const s = statusStyle(table.status);
+  const cardDisabled = (readonly && table.status !== 'Available') || freeing;
+
   return (
-    <button
-      onClick={onClick}
-      disabled={readonly && table.status !== 'Available'}
+    <div
+      role="button"
+      tabIndex={cardDisabled ? -1 : 0}
+      onClick={() => { if (!cardDisabled) onClick(); }}
+      onKeyDown={(e) => {
+        if (cardDisabled) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       style={{
         background: s.bg,
         border: `1px solid ${s.border}`,
         borderRadius: 12,
         padding: '12px 14px', // Reduced padding
-        cursor: readonly ? 'default' : 'pointer',
+        cursor: cardDisabled ? 'default' : 'pointer',
         textAlign: 'left',
         width: '100%',
         color: 'var(--text)',
         transition: 'all 140ms',
         boxShadow: 'var(--shadow-xs)',
+        outline: 'none',
       }}
-      onMouseEnter={(e) => { if (!readonly) (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-md)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--shadow-xs)'; }}
+      onMouseEnter={(e) => { if (!cardDisabled) (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-md)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-xs)'; }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
         <div style={{
@@ -77,16 +102,30 @@ function TableCard({ table, onClick, readonly, onTransfer }: { table: Table; onC
           {timeSince(table.occupiedSince)}
         </div>
       )}
-      {onTransfer && table.status === 'Occupied' && (
+      {(onTransfer || onFree) && table.status !== 'Available' && (
         <div style={{ marginTop: 10, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onTransfer(); }}
-            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <ArrowRightLeft size={11} /> Transfer
-          </button>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {onTransfer && table.status === 'Occupied' && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onTransfer(); }}
+                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <ArrowRightLeft size={11} /> Transfer
+              </button>
+            )}
+            {onFree && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onFree(); }}
+                disabled={freeing}
+                style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: freeing ? 'default' : 'pointer', fontSize: 11, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <X size={11} /> {freeing ? 'Freeing…' : 'Free Table'}
+              </button>
+            )}
+          </div>
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -98,6 +137,7 @@ export default function FloorPlanScreen() {
   const [takeawayLoading, setTakeawayLoading] = useState(false);
   const [transferFrom, setTransferFrom] = useState<Table | null>(null);
   const [transferring, setTransferring] = useState(false);
+  const [freeingTableId, setFreeingTableId] = useState<string | null>(null);
   const isCashier = user?.role === 'Cashier';
 
   useEffect(() => { refreshTables(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -171,6 +211,25 @@ export default function FloorPlanScreen() {
       showToast('Transfer failed');
     } finally {
       setTransferring(false);
+    }
+  };
+
+  const handleFreeTable = async (table: Table) => {
+    const confirmationMessage = table.currentOrderId
+      ? `Free up Table ${table.number}? The linked order will stay open, but it will no longer be attached to this table.`
+      : `Free up Table ${table.number}?`;
+
+    if (!window.confirm(confirmationMessage)) return;
+
+    setFreeingTableId(table.id);
+    try {
+      await tablesApi.updateStatus(table.id, 'Available');
+      await refreshTables();
+      showToast(`Table ${table.number} is now available`);
+    } catch {
+      showToast('Failed to free table');
+    } finally {
+      setFreeingTableId(null);
     }
   };
 
@@ -263,7 +322,9 @@ export default function FloorPlanScreen() {
         }}>
           {filtered.map((table) => (
             <TableCard key={table.id} table={table} onClick={() => handleTableClick(table)} readonly={isCashier}
-              onTransfer={!isCashier && table.status === 'Occupied' ? () => setTransferFrom(table) : undefined} />
+              onTransfer={!isCashier && table.status === 'Occupied' ? () => setTransferFrom(table) : undefined}
+              onFree={!isCashier && table.status !== 'Available' ? () => handleFreeTable(table) : undefined}
+              freeing={freeingTableId === table.id} />
           ))}
         </div>
       )}

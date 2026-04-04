@@ -8,18 +8,27 @@ import {
   Body,
   UseGuards,
 } from '@nestjs/common';
+import { Type } from 'class-transformer';
 import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { IsString, IsOptional } from 'class-validator';
-import { TableStatus } from './entities/table.entity';
+import { IsString, IsOptional, IsIn, IsNumber } from 'class-validator';
+import type { TableStatus } from './entities/table.entity';
 
 class UpdateStatusDto {
+  @IsIn(['Available', 'Occupied', 'Reserved', 'Needs Attention', 'Unpaid'])
   status: TableStatus;
-  @IsOptional() currentOrderId?: string;
-  @IsOptional() currentBill?: number;
+
+  @IsOptional()
+  @IsString()
+  currentOrderId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  currentBill?: number;
 }
 
 class TransferDto {

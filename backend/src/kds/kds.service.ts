@@ -1,14 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { KDSTicket, TicketStage } from './entities/kds-ticket.entity';
 import type { KDSStation } from '../products/entities/category.entity';
 import { KDSGateway } from './kds.gateway';
+import { OrderLineItem } from '../orders/entities/order-line-item.entity';
 
 @Injectable()
 export class KDSService {
   constructor(
     @InjectRepository(KDSTicket) private ticketRepo: Repository<KDSTicket>,
+    @InjectRepository(OrderLineItem) private itemRepo: Repository<OrderLineItem>,
     private gateway: KDSGateway,
   ) {}
 
@@ -55,6 +57,19 @@ export class KDSService {
     if (nextStage === 'DONE') update.completedAt = new Date();
 
     await this.ticketRepo.update(id, update);
+
+    if (nextStage === 'DONE') {
+      const itemIds = (ticket.items ?? [])
+        .map((item) => item.itemId)
+        .filter((itemId): itemId is string => Boolean(itemId));
+
+      if (itemIds.length > 0) {
+        await this.itemRepo.update(
+          { id: In(itemIds), status: In(['Pending', 'Sent']) as any },
+          { status: 'Done' as const },
+        );
+      }
+    }
 
     const updated = await this.ticketRepo.findOne({ where: { id } });
     if (!updated) throw new NotFoundException('Ticket not found after update');

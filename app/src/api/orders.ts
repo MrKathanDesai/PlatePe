@@ -46,4 +46,7 @@ export const ordersApi = {
 
   void: (orderId: string) =>
     client.patch<Order>(`/orders/${orderId}/void`),
+
+  cancel: (orderId: string) =>
+    client.delete<{ deleted: true }>(`/orders/${orderId}`),
 };

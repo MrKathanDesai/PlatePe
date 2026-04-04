@@ -111,4 +111,9 @@ export class OrdersController {
   voidOrder(@Param('id') id: string, @CurrentUser() user: User) {
     return this.ordersService.voidOrder(id, user);
   }
+
+  @Delete(':id')
+  cancelOrder(@Param('id') id: string, @CurrentUser() user: User) {
+    return this.ordersService.cancelOrder(id, user);
+  }
 }

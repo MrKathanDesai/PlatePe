@@ -17,6 +17,7 @@ import { Table } from '../tables/entities/table.entity';
 import { User } from '../auth/entities/user.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
+import { Payment } from '../payments/entities/payment.entity';
 
 @Injectable()
 export class OrdersService {
@@ -257,11 +258,11 @@ export class OrdersService {
     if (!item) throw new NotFoundException('Item not found');
     if (item.status === 'Voided') throw new BadRequestException('Item already voided');
 
-    if (item.status === 'Sent' && user.role !== 'Admin' && user.role !== 'Manager') {
-      throw new ForbiddenException('Only Admin or Manager can void already-sent items');
+    if ((item.status === 'Sent' || item.status === 'Done') && user.role !== 'Admin' && user.role !== 'Manager') {
+      throw new ForbiddenException('Only Admin or Manager can void items that were already sent or completed');
     }
 
-    if (item.status === 'Sent') {
+    if (item.status === 'Sent' || item.status === 'Done') {
       await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
     }
 
@@ -338,7 +339,7 @@ export class OrdersService {
     const item = await this.itemRepo.findOne({ where: { id: itemId, orderId } });
     if (!item) throw new NotFoundException('Item not found');
 
-    if (item.status === 'Sent') {
+    if (item.status === 'Sent' || item.status === 'Done') {
       await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
     }
 
@@ -365,8 +366,8 @@ export class OrdersService {
     if (order.status === 'Voided') throw new BadRequestException('Order already voided');
 
     // Restore stock for sent items
-    const sentItems = order.items.filter((i) => i.status === 'Sent');
-    for (const item of sentItems) {
+    const fulfilledItems = order.items.filter((i) => i.status === 'Sent' || i.status === 'Done');
+    for (const item of fulfilledItems) {
       await this.productRepo.increment({ id: item.productId }, 'stockQty', item.quantity);
     }
 
@@ -412,8 +413,8 @@ export class OrdersService {
       }
 
       // Restore stock for any items that were already sent to kitchen
-      const sentItems = order.items.filter((i) => i.status === 'Sent');
-      for (const item of sentItems) {
+      const fulfilledItems = order.items.filter((i) => i.status === 'Sent' || i.status === 'Done');
+      for (const item of fulfilledItems) {
         await manager.increment(Product, { id: item.productId }, 'stockQty', item.quantity);
       }
 
@@ -429,6 +430,17 @@ export class OrdersService {
         }),
       );
 
+      if (order.tableId) {
+        await manager.update(Table, order.tableId, {
+          status: 'Available',
+          currentOrderId: null,
+          currentBill: null,
+          occupiedSince: null,
+        } as any);
+      }
+
+      await manager.delete(Payment, { orderId });
+      await manager.delete(KDSTicket, { orderId });
       // Delete all line items then the order
       await manager.delete(OrderLineItem, { orderId });
       await manager.delete(Order, orderId);
