@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { TypeOrmModule, type TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -47,6 +47,11 @@ import { Reservation } from './reservations/entities/reservation.entity';
 import { ReservationTableAssignment } from './reservations/entities/reservation-table-assignment.entity';
 import { OrderToken } from './order-tokens/entities/order-token.entity';
 
+function parseBoolean(value: string | undefined) {
+  if (value == null) return undefined;
+  return value === 'true';
+}
+
 @Module({
   controllers: [AppController],
   imports: [
@@ -62,41 +67,66 @@ import { OrderToken } from './order-tokens/entities/order-token.entity';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get('DB_HOST', 'localhost'),
-        port: config.get<number>('DB_PORT', 5432),
-        username: config.get('DB_USERNAME', 'postgres'),
-        password: config.get('DB_PASSWORD') || undefined,
-        database: config.get('DB_NAME', 'platepe_pos'),
-        entities: [
-          User,
-          Terminal,
-          Session,
-          Category,
-          Modifier,
-          Product,
-          Floor,
-          Table,
-          Order,
-          OrderLineItem,
-          Payment,
-          KDSTicket,
-          AuditLog,
-          Discount,
-          Ingredient,
-          ProductRecipeLine,
-          RecipeModifierEffect,
-          InventoryTransaction,
-          Customer,
-          CustomerOtp,
-          Reservation,
-          ReservationTableAssignment,
-          OrderToken,
-        ],
-        synchronize: true, // Use migrations in production
-        logging: config.get('NODE_ENV') !== 'production',
-      }),
+      useFactory: (config: ConfigService): TypeOrmModuleOptions => {
+        const databaseUrl =
+          config.get<string>('DATABASE_URL')
+          ?? config.get<string>('POSTGRES_URL')
+          ?? config.get<string>('RENDER_DATABASE_URL')
+          ?? undefined;
+
+        const sslEnabled =
+          parseBoolean(config.get<string>('DB_SSL'))
+          ?? parseBoolean(config.get<string>('DATABASE_SSL'))
+          ?? (databaseUrl ? true : false);
+
+        const baseConfig = {
+          type: 'postgres' as const,
+          entities: [
+            User,
+            Terminal,
+            Session,
+            Category,
+            Modifier,
+            Product,
+            Floor,
+            Table,
+            Order,
+            OrderLineItem,
+            Payment,
+            KDSTicket,
+            AuditLog,
+            Discount,
+            Ingredient,
+            ProductRecipeLine,
+            RecipeModifierEffect,
+            InventoryTransaction,
+            Customer,
+            CustomerOtp,
+            Reservation,
+            ReservationTableAssignment,
+            OrderToken,
+          ],
+          synchronize: true, // Use migrations in production
+          logging: config.get('NODE_ENV') !== 'production',
+          ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+        };
+
+        if (databaseUrl) {
+          return {
+            ...baseConfig,
+            url: databaseUrl,
+          };
+        }
+
+        return {
+          ...baseConfig,
+          host: config.get('DB_HOST', 'localhost'),
+          port: config.get<number>('DB_PORT', 5432),
+          username: config.get<string>('DB_USERNAME', 'postgres'),
+          password: config.get<string>('DB_PASSWORD') || undefined,
+          database: config.get<string>('DB_NAME', 'platepe_pos'),
+        };
+      },
     }),
 
     AuthModule,
