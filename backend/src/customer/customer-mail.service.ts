@@ -1,6 +1,10 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer from 'nodemailer';
 
 function normalizeEnvValue(value: string | undefined) {
   const trimmed = value?.trim();
@@ -11,97 +15,84 @@ function normalizeEnvValue(value: string | undefined) {
 @Injectable()
 export class CustomerMailService {
   private readonly logger = new Logger(CustomerMailService.name);
-  private readonly transporter: nodemailer.Transporter | null;
+  private readonly apiKey: string | undefined;
   private readonly fromAddress: string;
+  private readonly fromName: string;
   private readonly hasMailConfig: boolean;
 
   constructor(private readonly config: ConfigService) {
-    const user = normalizeEnvValue(
-      this.config.get<string>('MAIL_USER')
-      ?? this.config.get<string>('SMTP_USER')
-      ?? this.config.get<string>('EMAIL_USER')
-      ?? this.config.get<string>('GMAIL_USER'),
+    this.apiKey = normalizeEnvValue(
+      this.config.get<string>('BREVO_API_KEY')
+      ?? this.config.get<string>('SENDINBLUE_API_KEY'),
     );
-    const rawPass = normalizeEnvValue(
-      this.config.get<string>('MAIL_PASS')
-      ?? this.config.get<string>('SMTP_PASS')
-      ?? this.config.get<string>('EMAIL_PASS')
-      ?? this.config.get<string>('GMAIL_APP_PASSWORD')
-      ?? this.config.get<string>('GMAIL_PASS'),
-    );
-    const pass = rawPass?.replace(/\s+/g, '');
-    const inferredService = user?.toLowerCase().endsWith('@gmail.com') ? 'Gmail' : undefined;
-    const service = normalizeEnvValue(
-      this.config.get<string>('MAIL_SERVICE')
-      ?? this.config.get<string>('SMTP_SERVICE')
-      ?? this.config.get<string>('EMAIL_SERVICE')
-      ?? this.config.get<string>('GMAIL_SERVICE')
-      ?? inferredService,
-    );
-    const host = normalizeEnvValue(this.config.get<string>('MAIL_HOST') ?? this.config.get<string>('SMTP_HOST'));
-    const portValue = normalizeEnvValue(this.config.get<string>('MAIL_PORT') ?? this.config.get<string>('SMTP_PORT'));
-    const secureValue = normalizeEnvValue(this.config.get<string>('MAIL_SECURE') ?? this.config.get<string>('SMTP_SECURE'));
-    const from =
+
+    this.fromAddress =
       normalizeEnvValue(
         this.config.get<string>('MAIL_FROM')
-        ?? this.config.get<string>('SMTP_FROM')
+        ?? this.config.get<string>('BREVO_FROM_EMAIL')
         ?? this.config.get<string>('EMAIL_FROM'),
       )
-      ?? user
       ?? 'no-reply@platepe.local';
 
-    this.fromAddress = from;
-    this.hasMailConfig = Boolean(user && pass && (service || host));
+    this.fromName =
+      normalizeEnvValue(
+        this.config.get<string>('MAIL_FROM_NAME')
+        ?? this.config.get<string>('BREVO_FROM_NAME'),
+      )
+      ?? 'PlatePe';
+
+    this.hasMailConfig = Boolean(this.apiKey && this.fromAddress);
 
     if (!this.hasMailConfig) {
-      this.logger.warn('Mail transport not configured — set MAIL_USER and MAIL_PASS (or SMTP/GMAIL equivalents)');
-      this.transporter = null;
-      return;
+      this.logger.warn('Brevo mail not configured — set BREVO_API_KEY and MAIL_FROM');
     }
-
-    const secure = secureValue ? secureValue === 'true' : Number(portValue ?? 587) === 465;
-    const port = Number(portValue ?? (secure ? 465 : 587));
-
-    this.transporter = nodemailer.createTransport(
-      service
-        ? {
-            service,
-            auth: { user, pass },
-          }
-        : {
-            host,
-            port,
-            secure,
-            auth: { user, pass },
-          },
-    );
   }
 
   async sendCustomerOtpEmail(input: { email: string; otp: string; name?: string | null }) {
-    if (!this.transporter) {
+    if (!this.hasMailConfig || !this.apiKey) {
       throw new ServiceUnavailableException('Email OTP is not configured');
     }
 
     const greeting = input.name?.trim() ? `Hi ${input.name.trim()},` : 'Hi,';
-
-    await this.transporter.sendMail({
-      from: this.fromAddress,
-      to: input.email,
-      subject: 'Your PlatePe verification code',
-      text: `${greeting}\n\nYour PlatePe verification code is ${input.otp}. It expires in 10 minutes.\n\nIf you did not request this code, you can ignore this email.`,
-      html: `
-        <div style="font-family:Arial,sans-serif;background:#faf7f3;padding:24px;">
-          <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #eee3d8;">
-            <p style="margin:0 0 16px;color:#3c2f28;font-size:16px;">${greeting}</p>
-            <p style="margin:0 0 20px;color:#5a4a40;font-size:15px;line-height:1.6;">Use this verification code to continue your PlatePe order.</p>
-            <div style="margin:0 0 20px;padding:16px 20px;border-radius:12px;background:#fff3e7;color:#a24d00;font-size:30px;font-weight:700;letter-spacing:0.35em;text-align:center;">
-              ${input.otp}
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'api-key': this.apiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          email: this.fromAddress,
+          name: this.fromName,
+        },
+        to: [{ email: input.email }],
+        subject: 'Your PlatePe verification code',
+        textContent: `${greeting}\n\nYour PlatePe verification code is ${input.otp}. It expires in 10 minutes.\n\nIf you did not request this code, you can ignore this email.`,
+        htmlContent: `
+          <div style="font-family:Arial,sans-serif;background:#faf7f3;padding:24px;">
+            <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #eee3d8;">
+              <p style="margin:0 0 16px;color:#3c2f28;font-size:16px;">${greeting}</p>
+              <p style="margin:0 0 20px;color:#5a4a40;font-size:15px;line-height:1.6;">Use this verification code to continue your PlatePe order.</p>
+              <div style="margin:0 0 20px;padding:16px 20px;border-radius:12px;background:#fff3e7;color:#a24d00;font-size:30px;font-weight:700;letter-spacing:0.35em;text-align:center;">
+                ${input.otp}
+              </div>
+              <p style="margin:0 0 8px;color:#5a4a40;font-size:14px;">This code expires in 10 minutes.</p>
+              <p style="margin:0;color:#8a776b;font-size:13px;">If you did not request this code, you can safely ignore this email.</p>
             </div>
-            <p style="margin:0 0 8px;color:#5a4a40;font-size:14px;">This code expires in 10 minutes.</p>
-            <p style="margin:0;color:#8a776b;font-size:13px;">If you did not request this code, you can safely ignore this email.</p>
           </div>
-        </div>
-      `,
+        `,
+      }),
+      signal: AbortSignal.timeout(15000),
+    }).catch((error: unknown) => {
+      this.logger.error(`Brevo request failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+      throw new ServiceUnavailableException('Email delivery is temporarily unavailable');
     });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      this.logger.error(`Brevo rejected email send with ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException('Failed to send verification code');
+    }
   }
 }
