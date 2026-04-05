@@ -5,8 +5,14 @@ export class CustomerOtp {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  phone: string;
+  @Column({ type: 'varchar', nullable: true })
+  phone: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  email: string | null;
+
+  @Column({ type: 'varchar', default: 'PHONE' })
+  channel: 'PHONE' | 'EMAIL';
 
   @Column()
   code: string;
@@ -16,6 +22,9 @@ export class CustomerOtp {
 
   @Column({ default: false })
   used: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  attempts: number;
 
   @CreateDateColumn()
   createdAt: Date;

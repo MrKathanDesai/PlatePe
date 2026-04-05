@@ -16,6 +16,8 @@ export type TableStatus =
   | 'Needs Attention'
   | 'Unpaid';
 
+export type TableAttentionType = 'PAYMENT_CASH' | 'PAYMENT_CARD';
+
 @Entity('tables')
 export class Table {
   @PrimaryGeneratedColumn('uuid')
@@ -31,7 +33,7 @@ export class Table {
   @JoinColumn({ name: 'floorId' })
   floor: Floor | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
   floorId: string | null;
 
   @Column({ type: 'int', nullable: true })
@@ -57,6 +59,12 @@ export class Table {
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   currentBill: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  attentionType: TableAttentionType | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  attentionRequestedAt: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
   occupiedSince: Date | null;

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { SeederService } from './database/seeder.service';
@@ -18,6 +19,8 @@ import { ReportingModule } from './reporting/reporting.module';
 import { AuditModule } from './audit/audit.module';
 import { CustomerModule } from './customer/customer.module';
 import { FloorsModule } from './floors/floors.module';
+import { ReservationsModule } from './reservations/reservations.module';
+import { OrderTokensModule } from './order-tokens/order-tokens.module';
 
 // Entities
 import { User } from './auth/entities/user.entity';
@@ -38,12 +41,23 @@ import { ProductRecipeLine } from './inventory/entities/product-recipe-line.enti
 import { RecipeModifierEffect } from './inventory/entities/recipe-modifier-effect.entity';
 import { InventoryTransaction } from './inventory/entities/inventory-transaction.entity';
 import { Customer } from './customer/entities/customer.entity';
+import { CustomerOtp } from './customer/entities/customer-otp.entity';
 import { Floor } from './floors/entities/floor.entity';
+import { Reservation } from './reservations/entities/reservation.entity';
+import { ReservationTableAssignment } from './reservations/entities/reservation-table-assignment.entity';
+import { OrderToken } from './order-tokens/entities/order-token.entity';
 
 @Module({
   controllers: [AppController],
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: [
+        join(process.cwd(), '.env'),
+        join(process.cwd(), '..', '.env'),
+        '.env',
+      ],
+    }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -75,6 +89,10 @@ import { Floor } from './floors/entities/floor.entity';
           RecipeModifierEffect,
           InventoryTransaction,
           Customer,
+          CustomerOtp,
+          Reservation,
+          ReservationTableAssignment,
+          OrderToken,
         ],
         synchronize: true, // Use migrations in production
         logging: config.get('NODE_ENV') !== 'production',
@@ -94,6 +112,8 @@ import { Floor } from './floors/entities/floor.entity';
     AuditModule,
     CustomerModule,
     FloorsModule,
+    ReservationsModule,
+    OrderTokensModule,
     TypeOrmModule.forFeature([User, Category]),
   ],
   providers: [AppService, SeederService],

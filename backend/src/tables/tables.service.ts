@@ -73,6 +73,8 @@ export class TablesService {
       existing.rotation = dto.rotation ?? existing.rotation ?? 0;
       existing.status = 'Available';
       existing.currentBill = null;
+      existing.attentionType = null;
+      existing.attentionRequestedAt = null;
       existing.currentOrderId = null;
       existing.occupiedSince = null;
       return this.tableRepo.save(existing);
@@ -152,6 +154,8 @@ export class TablesService {
         update.occupiedSince = null;
         update.currentOrderId = null;
         update.currentBill = null;
+        update.attentionType = null;
+        update.attentionRequestedAt = null;
 
         // Manually freeing a table should also detach any still-open tickets from it,
         // otherwise the floor plan clears while the order remains ghost-linked.
@@ -182,12 +186,16 @@ export class TablesService {
       occupiedSince: null,
       currentOrderId: null,
       currentBill: null,
+      attentionType: null,
+      attentionRequestedAt: null,
     } as any);
 
     await this.tableRepo.update(toId, {
       status: 'Occupied',
       occupiedSince: new Date(),
       currentOrderId: orderId,
+      attentionType: null,
+      attentionRequestedAt: null,
     } as any);
 
     // Update the order's tableId so payment clearing logic targets the correct table

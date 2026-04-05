@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Payment, PaymentMethod } from './entities/payment.entity';
 import { Order } from '../orders/entities/order.entity';
+import { Table } from '../tables/entities/table.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
 import {
   CreatePaymentDto,
@@ -25,6 +26,7 @@ export class PaymentsService {
   constructor(
     @InjectRepository(Payment) private paymentRepo: Repository<Payment>,
     @InjectRepository(Order) private orderRepo: Repository<Order>,
+    @InjectRepository(Table) private tableRepo: Repository<Table>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     private dataSource: DataSource,
     private kdsGateway: KDSGateway,
@@ -40,6 +42,45 @@ export class PaymentsService {
     if (paidOrderId && paidOrderTotal !== null) {
       this.kdsGateway.emitOrderPaid({ orderId: paidOrderId, total: paidOrderTotal });
     }
+  }
+
+  async requestCustomerAssistedPayment(input: {
+    orderId: string;
+    method: Extract<PaymentMethod, 'CASH' | 'DIGITAL'>;
+  }) {
+    let attentionPayload: { tableId: string; orderId: string; type: 'PAYMENT_CASH' | 'PAYMENT_CARD' } | null = null;
+
+    const order = await this.dataSource.transaction(async (manager) => {
+      const targetOrder = await manager.findOne(Order, { where: { id: input.orderId } });
+      if (!targetOrder) throw new NotFoundException('Order not found');
+      if (targetOrder.status === 'Paid') throw new BadRequestException('Order already paid');
+      if (targetOrder.status === 'Voided') throw new BadRequestException('Order is voided');
+      if (!targetOrder.tableId) {
+        throw new BadRequestException('Staff-assisted payment requests are only available for table orders');
+      }
+
+      const table = await manager.findOne(Table, { where: { id: targetOrder.tableId } });
+      if (!table) throw new NotFoundException('Table not found');
+
+      const attentionType = input.method === 'CASH' ? 'PAYMENT_CASH' : 'PAYMENT_CARD';
+      await manager.update(Table, table.id, {
+        status: 'Needs Attention',
+        currentOrderId: targetOrder.id,
+        currentBill: Number(targetOrder.total),
+        occupiedSince: table.occupiedSince ?? new Date(),
+        attentionType,
+        attentionRequestedAt: new Date(),
+      } as any);
+
+      attentionPayload = { tableId: table.id, orderId: targetOrder.id, type: attentionType };
+      return targetOrder;
+    });
+
+    if (attentionPayload) {
+      this.kdsGateway.emitTableAttention(attentionPayload);
+    }
+
+    return order;
   }
 
   private async settleOrderIfFullyPaidInTransaction(
@@ -117,6 +158,12 @@ export class PaymentsService {
     });
 
     this.emitPaymentSettlement(dispatchedTickets, paidOrderId, paidOrderTotal);
+    if (result.orderId) {
+      const order = await this.orderRepo.findOne({ where: { id: result.orderId } });
+      if (order?.tableId) {
+        this.kdsGateway.emitTableAttentionCleared({ tableId: order.tableId, orderId: order.id });
+      }
+    }
 
     return result;
   }
@@ -141,6 +188,12 @@ export class PaymentsService {
     });
 
     this.emitPaymentSettlement(dispatchedTickets, paidOrderId, paidOrderTotal);
+    if (paidOrderId) {
+      const order = await this.orderRepo.findOne({ where: { id: paidOrderId } });
+      if (order?.tableId) {
+        this.kdsGateway.emitTableAttentionCleared({ tableId: order.tableId, orderId: order.id });
+      }
+    }
   }
 
   async createAndConfirmCustomerPayment(input: {

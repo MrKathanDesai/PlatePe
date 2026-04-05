@@ -4,6 +4,8 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { CustomerService } from './customer.service';
 import {
+  SendEmailOtpDto,
+  VerifyEmailOtpDto,
   VerifyFirebaseTokenDto,
   CreateCustomerOrderDto,
   AddCustomerItemsDto,
@@ -19,6 +21,16 @@ export class CustomerController {
   @Post('auth/verify-firebase')
   verifyFirebase(@Body() dto: VerifyFirebaseTokenDto) {
     return this.customerService.verifyFirebaseToken(dto.idToken, dto.name);
+  }
+
+  @Post('auth/email/send-otp')
+  sendEmailOtp(@Body() dto: SendEmailOtpDto) {
+    return this.customerService.sendEmailOtp(dto.email, dto.name);
+  }
+
+  @Post('auth/email/verify-otp')
+  verifyEmailOtp(@Body() dto: VerifyEmailOtpDto) {
+    return this.customerService.verifyEmailOtp(dto.email, dto.code, dto.name);
   }
 
   // ─── Menu (public) ────────────────────────────────────────────────────────

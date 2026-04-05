@@ -11,12 +11,13 @@ import { AuditLog } from '../audit/entities/audit-log.entity';
 import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 import { KDSModule } from '../kds/kds.module';
 import { InventoryModule } from '../inventory/inventory.module';
+import { OrderToken } from '../order-tokens/entities/order-token.entity';
 
 @Module({
   imports: [
     KDSModule,
     InventoryModule,
-    TypeOrmModule.forFeature([Order, OrderLineItem, Product, Category, Table, AuditLog, KDSTicket]),
+    TypeOrmModule.forFeature([Order, OrderLineItem, Product, Category, Table, AuditLog, KDSTicket, OrderToken]),
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

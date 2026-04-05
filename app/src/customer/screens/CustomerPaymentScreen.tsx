@@ -30,13 +30,13 @@ const METHOD_OPTIONS: Array<{
   {
     method: 'DIGITAL',
     label: 'Card',
-    description: 'Use the card terminal, then confirm here.',
+    description: 'Request the card terminal at your table.',
     icon: CreditCard,
   },
   {
     method: 'CASH',
     label: 'Cash',
-    description: 'Pay in cash and record it once collected.',
+    description: 'Ask staff to collect cash from your table.',
     icon: Banknote,
   },
 ];
@@ -55,7 +55,7 @@ export default function CustomerPaymentScreen() {
   const [method, setMethod] = useState<CustomerPaymentMethod>('UPI');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [successState, setSuccessState] = useState<'paid' | 'requested' | null>(null);
   const [upiRef, setUpiRef] = useState('');
   const [upiQrDataUrl, setUpiQrDataUrl] = useState<string | null>(null);
   const [upiQrError, setUpiQrError] = useState('');
@@ -74,8 +74,8 @@ export default function CustomerPaymentScreen() {
   const confirmButtonLabel = method === 'UPI'
     ? `Mark UPI Paid · ₹${Number(orderTotal ?? 0).toFixed(2)}`
     : method === 'DIGITAL'
-      ? `Confirm Card Payment · ₹${Number(orderTotal ?? 0).toFixed(2)}`
-      : `Confirm Cash Payment · ₹${Number(orderTotal ?? 0).toFixed(2)}`;
+      ? `Request Card Payment · ₹${Number(orderTotal ?? 0).toFixed(2)}`
+      : `Request Cash Collection · ₹${Number(orderTotal ?? 0).toFixed(2)}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +105,7 @@ export default function CustomerPaymentScreen() {
       });
       clearCart();
       setOrderStatus(result.orderStatus);
-      setSuccess(true);
+      setSuccessState(result.paymentRequestStatus === 'REQUESTED' ? 'requested' : 'paid');
       setTimeout(() => setScreen('status'), 1500);
     } catch (e: any) {
       setError(e.message ?? 'Payment failed');
@@ -114,7 +114,7 @@ export default function CustomerPaymentScreen() {
     }
   }
 
-  if (success) {
+  if (successState) {
     return (
       <div style={s.page}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: '40px 24px', textAlign: 'center' }}>
@@ -122,10 +122,12 @@ export default function CustomerPaymentScreen() {
             <CheckCircle size={32} color="var(--green)" />
           </div>
           <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 24, fontWeight: 700, color: 'var(--text)', margin: '0 0 8px', letterSpacing: '-0.03em' }}>
-            Payment recorded
+            {successState === 'paid' ? 'Payment recorded' : 'Staff notified'}
           </h2>
           <p style={{ margin: 0, fontSize: 14, color: 'var(--text-3)', lineHeight: 1.6 }}>
-            Your order has been marked as paid.
+            {successState === 'paid'
+              ? 'Your order has been marked as paid.'
+              : 'A cashier has been notified on the floor plan and will collect your payment shortly.'}
           </p>
         </div>
       </div>
@@ -284,7 +286,7 @@ export default function CustomerPaymentScreen() {
           {method === 'DIGITAL' && (
             <div style={{ borderRadius: 'var(--radius)', background: 'var(--surface-2)', border: '1.5px solid var(--border)', padding: '14px 16px', marginBottom: 16 }}>
               <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
-                Run the card on the terminal, then tap confirm below to mark the order as paid.
+                Tap below to alert the cashier that you want to pay by card at the table.
               </p>
             </div>
           )}
@@ -292,7 +294,7 @@ export default function CustomerPaymentScreen() {
           {method === 'CASH' && (
             <div style={{ borderRadius: 'var(--radius)', background: 'var(--surface-2)', border: '1.5px solid var(--border)', padding: '14px 16px', marginBottom: 16 }}>
               <p style={{ margin: 0, fontFamily: 'var(--font-ui)', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
-                Collect cash at the table or counter, then confirm below to close the bill.
+                Tap below to alert the cashier that you want to settle this bill in cash.
               </p>
             </div>
           )}
@@ -307,7 +309,7 @@ export default function CustomerPaymentScreen() {
             disabled={loading}
             style={{ width: '100%' }}
           >
-            {loading ? 'Confirming…' : confirmButtonLabel}
+            {loading ? (method === 'UPI' ? 'Confirming…' : 'Sending request…') : confirmButtonLabel}
           </button>
 
           <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-3)', textAlign: 'center', margin: '12px 0 0', letterSpacing: '0.04em' }}>

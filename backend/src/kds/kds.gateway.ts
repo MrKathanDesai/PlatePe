@@ -61,6 +61,18 @@ export class KDSGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.emit('order:paid', data);
   }
 
+  emitTableAttention(data: {
+    tableId: string;
+    orderId: string;
+    type: 'PAYMENT_CASH' | 'PAYMENT_CARD';
+  }) {
+    this.server.emit('table:attention', data);
+  }
+
+  emitTableAttentionCleared(data: { tableId: string; orderId: string }) {
+    this.server.emit('table:attention-cleared', data);
+  }
+
   @SubscribeMessage('ping')
   handlePing() {
     return { event: 'pong', data: 'pong' };

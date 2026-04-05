@@ -10,10 +10,10 @@ export const ROLE_HOME: Record<UserRole, Screen> = {
 };
 
 export const ROLE_SCREENS: Record<UserRole, Screen[]> = {
-  Admin: ['Dashboard', 'FloorPlan', 'Order', 'Payment', 'KDS', 'Brewbar', 'CashierQueue', 'Reporting', 'Settings'],
-  Manager: ['Dashboard', 'FloorPlan', 'Order', 'Payment', 'CashierQueue', 'Reporting'],
-  Cashier: ['CashierQueue', 'FloorPlan', 'Order', 'Payment'],
-  Server: ['FloorPlan', 'Order'],
+  Admin: ['Dashboard', 'FloorPlan', 'Reservations', 'Order', 'Payment', 'KDS', 'Brewbar', 'CashierQueue', 'Reporting', 'Settings'],
+  Manager: ['Dashboard', 'FloorPlan', 'Reservations', 'Order', 'Payment', 'CashierQueue', 'Reporting'],
+  Cashier: ['CashierQueue', 'FloorPlan', 'Reservations', 'Order', 'Payment'],
+  Server: ['FloorPlan', 'Reservations', 'Order'],
   Barista: ['Brewbar'],
   Chef: ['KDS'],
 };

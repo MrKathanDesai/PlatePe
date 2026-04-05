@@ -4,6 +4,7 @@ import { sessionsApi } from '../api/sessions';
 import { productsApi } from '../api/products';
 import { tablesApi } from '../api/tables';
 import { floorsApi } from '../api/floors';
+import { disconnectKDSSocket, getKDSSocket } from '../api/kds';
 import { AppContext } from './app-store-context';
 import { ROLE_HOME } from './roleConfig';
 
@@ -154,6 +155,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    disconnectKDSSocket();
     document.body.removeAttribute('data-role');
     dispatch({ type: 'SET_USER',         payload: null });
     dispatch({ type: 'SET_SESSION',      payload: null });
@@ -173,6 +175,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const r = await tablesApi.getAll();
     dispatch({ type: 'SET_TABLES', payload: r.data });
   }, []);
+
+  useEffect(() => {
+    if (!state.user) return;
+
+    const socket = getKDSSocket();
+    const handleTableRefresh = () => { void refreshTables(); };
+
+    socket.on('order:paid', handleTableRefresh);
+    socket.on('table:attention', handleTableRefresh);
+    socket.on('table:attention-cleared', handleTableRefresh);
+
+    return () => {
+      socket.off('order:paid', handleTableRefresh);
+      socket.off('table:attention', handleTableRefresh);
+      socket.off('table:attention-cleared', handleTableRefresh);
+      if (!localStorage.getItem('token')) {
+        disconnectKDSSocket();
+      }
+    };
+  }, [refreshTables, state.user]);
 
   const refreshFloors   = useCallback(async () => {
     const r = await floorsApi.getAll();

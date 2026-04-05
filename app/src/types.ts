@@ -67,6 +67,7 @@ export interface Floor {
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
 export type TableStatus = 'Available' | 'Occupied' | 'Reserved' | 'Needs Attention' | 'Unpaid';
+export type TableAttentionType = 'PAYMENT_CASH' | 'PAYMENT_CARD';
 
 export interface Table {
   id: string;
@@ -82,9 +83,51 @@ export interface Table {
   rotation: number;
   status: TableStatus;
   currentBill: number | null;
+  attentionType: TableAttentionType | null;
+  attentionRequestedAt: string | null;
   occupiedSince: string | null;
   currentOrderId: string | null;
   isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Reservations ────────────────────────────────────────────────────────────
+export type ReservationStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'SEATED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_SHOW';
+
+export type ReservationChannel = 'PHONE' | 'WALK_IN' | 'ONLINE';
+
+export interface ReservationTableAssignment {
+  id: string;
+  reservationId: string;
+  tableId: string;
+  table?: Table;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface Reservation {
+  id: string;
+  guestName: string;
+  phone: string | null;
+  email: string | null;
+  partySize: number;
+  startsAt: string;
+  endsAt: string;
+  status: ReservationStatus;
+  notes: string | null;
+  channel: ReservationChannel;
+  createdByUserId: string | null;
+  seatedAt: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  assignments: ReservationTableAssignment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -304,6 +347,7 @@ export type Screen =
   | 'Login'
   | 'Dashboard'
   | 'FloorPlan'
+  | 'Reservations'
   | 'Order'
   | 'Payment'
   | 'KDS'

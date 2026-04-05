@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
-  sendSignInLinkToEmail,
 } from 'firebase/auth';
 import type { ConfirmationResult } from 'firebase/auth';
 import { auth, firebaseAuthEnabled } from '../firebase';
@@ -15,7 +14,7 @@ declare global {
 
 type AuthMethod = 'phone' | 'email';
 type PhoneStep = 'input' | 'otp';
-type EmailStep = 'input' | 'sent';
+type EmailStep = 'input' | 'otp';
 
 export default function OtpLoginScreen() {
   const { setAuth, tableNumber } = useCustomer();
@@ -30,6 +29,7 @@ export default function OtpLoginScreen() {
 
   // Email state
   const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [emailStep, setEmailStep] = useState<EmailStep>('input');
 
   // Shared
@@ -98,32 +98,30 @@ export default function OtpLoginScreen() {
 
   // ── Email handlers ────────────────────────────────────────────────────────
 
-  async function handleSendEmailLink() {
-    if (!firebaseAuthEnabled || !auth) { setError('Firebase not configured'); return; }
+  async function handleSendEmailOtp() {
     if (!email.includes('@')) { setError('Enter a valid email address'); return; }
     setError('');
     setLoading(true);
     try {
-      // Embed email in the return URL so it works even if the link opens
-      // in a different browser (e.g. Gmail app's built-in WebView)
-      const returnUrl = new URL(window.location.href);
-      returnUrl.searchParams.set('emailForSignIn', email);
-      const actionCodeSettings = {
-        url: returnUrl.toString(),
-        handleCodeInApp: true,
-      };
-      await sendSignInLinkToEmail(auth!, email, actionCodeSettings);
-      // Also save locally as a fallback for same-browser opens
-      localStorage.setItem('customer_email_for_signin', email);
-      setEmailStep('sent');
+      await customerApi.sendEmailOtp(email, name || undefined);
+      setEmailStep('otp');
     } catch (e: any) {
-      console.error('sendSignInLinkToEmail error:', e.code, e.message);
-      const msg = e.code === 'auth/operation-not-allowed'
-        ? 'Email link sign-in is not enabled in Firebase Console. Enable it under Authentication → Sign-in method → Email/Password → Email link.'
-        : e.code === 'auth/unauthorized-continue-uri'
-        ? `Domain not authorized in Firebase. Add "${window.location.hostname}" to Firebase Authorized Domains.`
-        : e.message?.replace('Firebase: ', '') ?? 'Failed to send link';
-      setError(msg);
+      setError(e.message ?? 'Failed to send verification code');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyEmailOtp() {
+    if (!email.includes('@')) { setError('Enter a valid email address'); return; }
+    if (emailCode.length !== 6) { setError('Enter the 6-digit code'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await customerApi.verifyEmailOtp(email, emailCode, name || undefined);
+      setAuth(res.token, res.customer);
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to verify code');
     } finally {
       setLoading(false);
     }
@@ -134,6 +132,7 @@ export default function OtpLoginScreen() {
     setError('');
     setPhoneStep('input');
     setEmailStep('input');
+    setEmailCode('');
     setOtpCode('');
   }
 
@@ -261,40 +260,61 @@ export default function OtpLoginScreen() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendEmailLink()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendEmailOtp()}
                     autoFocus
                   />
                 </div>
                 {error && <p style={styles.error}>{error}</p>}
                 <button
-                  style={{ ...styles.btn, opacity: loading || !firebaseAuthEnabled ? 0.65 : 1 }}
-                  onClick={handleSendEmailLink}
-                  disabled={loading || !firebaseAuthEnabled}
+                  style={{ ...styles.btn, opacity: loading ? 0.65 : 1 }}
+                  onClick={handleSendEmailOtp}
+                  disabled={loading}
                 >
-                  {loading ? 'Sending…' : 'Send Magic Link'}
+                  {loading ? 'Sending…' : 'Send Email OTP'}
                 </button>
               </>
             ) : (
-              <div style={styles.sentBox}>
-                <div style={styles.sentIcon}>✉️</div>
-                <h3 style={styles.sentTitle}>Check your inbox</h3>
-                <p style={styles.sentDesc}>
-                  We sent a sign-in link to<br />
-                  <strong>{email}</strong>
-                </p>
-                <p style={styles.sentHint}>
-                  Click the link in the email — it will bring you right back here.
-                </p>
-                <button style={styles.linkBtn} onClick={() => { setEmailStep('input'); setError(''); }}>
-                  Use a different email
+              <>
+                <p style={styles.sentNote}>Verification code sent to {email}</p>
+                <div style={styles.fieldGroup}>
+                  <label style={styles.label}>6-digit code</label>
+                  <input
+                    style={styles.otpInput}
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="• • • • • •"
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleVerifyEmailOtp()}
+                    autoFocus
+                  />
+                </div>
+                {error && <p style={styles.error}>{error}</p>}
+                <button
+                  style={{ ...styles.btn, opacity: loading ? 0.65 : 1 }}
+                  onClick={handleVerifyEmailOtp}
+                  disabled={loading}
+                >
+                  {loading ? 'Verifying…' : 'Verify & Continue'}
                 </button>
-              </div>
+                <button
+                  style={styles.linkBtn}
+                  onClick={() => {
+                    setEmailCode('');
+                    setEmailStep('input');
+                    setError('');
+                  }}
+                >
+                  Send a new code
+                </button>
+              </>
             )}
           </>
         )}
 
         <p style={styles.poweredBy}>
-          Verified by <span style={{ color: '#F57C00', fontWeight: 700 }}>Firebase</span>
+          Phone via <span style={{ color: '#F57C00', fontWeight: 700 }}>Firebase</span>, email via secure OTP
         </p>
       </div>
     </div>
@@ -479,23 +499,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(184,50,50,0.07)',
     borderRadius: 8,
   },
-  sentBox: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    textAlign: 'center',
-    padding: '12px 0',
-  },
-  sentIcon: { fontSize: 48, marginBottom: 12 },
-  sentTitle: {
-    fontFamily: "var(--font-ui)",
-    fontSize: 20,
-    fontWeight: 600,
-    color: 'var(--text)',
-    margin: '0 0 8px',
-  },
-  sentDesc: { fontSize: 14, color: 'var(--text-2)', margin: '0 0 10px', lineHeight: 1.6 },
-  sentHint: { fontSize: 13, color: 'var(--text-3)', margin: '0 0 4px', lineHeight: 1.5 },
   poweredBy: {
     textAlign: 'center',
     color: 'var(--text-3)',

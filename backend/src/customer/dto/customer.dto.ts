@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsUUID, IsNumber, Min, IsArray, ValidateNested, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsNumber, Min, IsArray, ValidateNested, IsIn, IsEmail, Length } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SendOtpDto {
@@ -21,6 +21,28 @@ export class VerifyOtpDto {
 export class VerifyFirebaseTokenDto {
   @IsString()
   idToken: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+}
+
+export class SendEmailOtpDto {
+  @IsEmail()
+  email: string;
+
+  @IsOptional()
+  @IsString()
+  name?: string;
+}
+
+export class VerifyEmailOtpDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @Length(6, 6)
+  code: string;
 
   @IsOptional()
   @IsString()

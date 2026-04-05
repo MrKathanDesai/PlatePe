@@ -8,8 +8,10 @@ import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { CustomerJwtStrategy } from './customer-jwt.strategy';
 import { FirebaseService } from './firebase.service';
+import { CustomerMailService } from './customer-mail.service';
 
 import { Customer } from './entities/customer.entity';
+import { CustomerOtp } from './entities/customer-otp.entity';
 import { Product } from '../products/entities/product.entity';
 import { Category } from '../products/entities/category.entity';
 import { Table } from '../tables/entities/table.entity';
@@ -23,6 +25,7 @@ import { OrdersModule } from '../orders/orders.module';
   imports: [
     TypeOrmModule.forFeature([
       Customer,
+      CustomerOtp,
       Product,
       Category,
       Table,
@@ -43,6 +46,6 @@ import { OrdersModule } from '../orders/orders.module';
     OrdersModule,
   ],
   controllers: [CustomerController],
-  providers: [CustomerService, CustomerJwtStrategy, FirebaseService],
+  providers: [CustomerService, CustomerJwtStrategy, FirebaseService, CustomerMailService],
 })
 export class CustomerModule {}

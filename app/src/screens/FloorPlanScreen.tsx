@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, ShoppingBag, ArrowRightLeft, X, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Search, Plus, ShoppingBag, ArrowRightLeft, X, Trash2, Layers3 } from 'lucide-react';
 import { useApp } from '../store/app-store-context';
 import { ordersApi } from '../api/orders';
 import { tablesApi } from '../api/tables';
-import type { Table, TableStatus } from '../types';
+import type { Table, TableAttentionType, TableStatus } from '../types';
 
 type StatusFilter = TableStatus | 'All';
+
+const UNASSIGNED_FLOOR_ID = '__unassigned__';
 
 function timeSince(dateStr: string) {
   const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
@@ -15,12 +17,20 @@ function timeSince(dateStr: string) {
 
 function statusStyle(status: TableStatus): { border: string; bg: string; dot: string } {
   switch (status) {
-    case 'Available':      return { border: 'var(--green)',  bg: 'var(--green-bg)',  dot: 'var(--green)' };
-    case 'Occupied':       return { border: 'var(--red)',    bg: 'var(--red-bg)',    dot: 'var(--red)' };
-    case 'Needs Attention':return { border: 'var(--amber)',  bg: 'var(--amber-bg)', dot: 'var(--amber)' };
-    case 'Unpaid':         return { border: 'var(--red)',    bg: 'var(--red-bg)',    dot: 'var(--red)' };
-    case 'Reserved':       return { border: 'var(--blue)',   bg: 'var(--blue-bg)',  dot: 'var(--blue)' };
-    default:               return { border: 'var(--border)', bg: 'var(--surface)',   dot: 'var(--text-3)' };
+    case 'Available': return { border: 'var(--green)', bg: 'var(--green-bg)', dot: 'var(--green)' };
+    case 'Occupied': return { border: 'var(--red)', bg: 'var(--red-bg)', dot: 'var(--red)' };
+    case 'Needs Attention': return { border: 'var(--amber)', bg: 'var(--amber-bg)', dot: 'var(--amber)' };
+    case 'Unpaid': return { border: 'var(--red)', bg: 'var(--red-bg)', dot: 'var(--red)' };
+    case 'Reserved': return { border: 'var(--blue)', bg: 'var(--blue-bg)', dot: 'var(--blue)' };
+    default: return { border: 'var(--border)', bg: 'var(--surface)', dot: 'var(--text-3)' };
+  }
+}
+
+function attentionLabel(type: TableAttentionType | null) {
+  switch (type) {
+    case 'PAYMENT_CASH': return 'Cash Payment Requested';
+    case 'PAYMENT_CARD': return 'Card Payment Requested';
+    default: return null;
   }
 }
 
@@ -32,6 +42,7 @@ function TableCard({
   onFree,
   onVoidOrder,
   freeing,
+  style,
 }: {
   table: Table;
   onClick: () => void;
@@ -40,9 +51,11 @@ function TableCard({
   onFree?: () => void;
   onVoidOrder?: () => void;
   freeing?: boolean;
+  style?: CSSProperties;
 }) {
   const s = statusStyle(table.status);
   const cardDisabled = (readonly && table.status !== 'Available') || freeing;
+  const attentionText = attentionLabel(table.attentionType);
 
   return (
     <div
@@ -64,10 +77,13 @@ function TableCard({
         cursor: cardDisabled ? 'default' : 'pointer',
         textAlign: 'left',
         width: '100%',
+        height: '100%',
         color: 'var(--text)',
         transition: 'box-shadow 100ms, transform 80ms',
         boxShadow: 'var(--shadow-hard-sm)',
         outline: 'none',
+        boxSizing: 'border-box',
+        ...style,
       }}
       onMouseEnter={(e) => { if (!cardDisabled) (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-hard)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'var(--shadow-hard-sm)'; }}
@@ -94,7 +110,29 @@ function TableCard({
         {table.status}
       </div>
 
-      {table.status === 'Occupied' && table.currentBill != null && (
+      {attentionText && (
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 8,
+          padding: '4px 8px',
+          borderRadius: 999,
+          background: 'var(--amber-bg)',
+          border: '1px solid var(--amber)',
+          color: 'var(--amber)',
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          animation: 'pulse 1.6s ease-in-out infinite',
+        }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--amber)' }} />
+          {attentionText}
+        </div>
+      )}
+
+      {(table.status === 'Occupied' || table.status === 'Needs Attention' || table.status === 'Unpaid') && table.currentBill != null && (
         <div style={{ fontSize: 14, color: 'var(--text)', fontWeight: 600, marginTop: 4 }}>
           ₹{Number(table.currentBill).toFixed(0)}
         </div>
@@ -141,7 +179,18 @@ function TableCard({
 }
 
 export default function FloorPlanScreen() {
-  const { tables, session, refreshTables, navigate, setActiveOrder, setActiveTable, showToast, user } = useApp();
+  const {
+    tables,
+    floors,
+    session,
+    refreshTables,
+    refreshFloors,
+    navigate,
+    setActiveOrder,
+    setActiveTable,
+    showToast,
+    user,
+  } = useApp();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('All');
   const [loading, setLoading] = useState(false);
@@ -149,25 +198,54 @@ export default function FloorPlanScreen() {
   const [transferFrom, setTransferFrom] = useState<Table | null>(null);
   const [transferring, setTransferring] = useState(false);
   const [freeingTableId, setFreeingTableId] = useState<string | null>(null);
+  const [selectedFloorId, setSelectedFloorId] = useState<string>(UNASSIGNED_FLOOR_ID);
   const isCashier = user?.role === 'Cashier';
 
   useEffect(() => {
-    void refreshTables();
-  }, [refreshTables]);
+    void Promise.all([refreshTables(), refreshFloors()]);
+  }, [refreshTables, refreshFloors]);
+
+  useEffect(() => {
+    const floorIds = new Set(floors.map((floor) => floor.id));
+    if (selectedFloorId === UNASSIGNED_FLOOR_ID) {
+      if (floors.length > 0 && tables.some((table) => table.floorId === floors[0].id)) {
+        setSelectedFloorId(floors[0].id);
+      }
+      return;
+    }
+
+    if (!floorIds.has(selectedFloorId)) {
+      setSelectedFloorId(floors[0]?.id ?? UNASSIGNED_FLOOR_ID);
+    }
+  }, [floors, selectedFloorId, tables]);
+
+  const floorOptions = useMemo(() => {
+    const options = floors.map((floor) => ({ id: floor.id, label: floor.name }));
+    if (tables.some((table) => table.isActive && !table.floorId)) {
+      options.unshift({ id: UNASSIGNED_FLOOR_ID, label: 'Unassigned' });
+    }
+    if (options.length === 0) {
+      options.push({ id: UNASSIGNED_FLOOR_ID, label: 'Unassigned' });
+    }
+    return options;
+  }, [floors, tables]);
+
+  const selectedFloor = floors.find((floor) => floor.id === selectedFloorId) ?? null;
 
   const filtered = tables
     .filter((t) => t.isActive)
+    .filter((t) => (selectedFloorId === UNASSIGNED_FLOOR_ID ? !t.floorId : t.floorId === selectedFloorId))
     .filter((t) => filter === 'All' || t.status === filter)
     .filter((t) => t.number.toLowerCase().includes(search.toLowerCase()));
 
   const counts = {
     Available: tables.filter((t) => t.status === 'Available').length,
-    Occupied:  tables.filter((t) => t.status === 'Occupied').length,
+    Occupied: tables.filter((t) => t.status === 'Occupied').length,
     Attention: tables.filter((t) => t.status === 'Needs Attention' || t.status === 'Unpaid').length,
   };
 
   const handleTableClick = async (table: Table) => {
-    if (isCashier) return; // Cashier uses floor plan as view only
+    if (isCashier) return;
     if (!session) { showToast('Open a session first'); return; }
     setLoading(true);
     setActiveTable(table.id);
@@ -196,7 +274,6 @@ export default function FloorPlanScreen() {
           navigate('Order');
         }
       } else {
-        // Table is occupied but has no order — stale state, just refresh
         await refreshTables();
       }
     } catch {
@@ -255,11 +332,44 @@ export default function FloorPlanScreen() {
     }
   };
 
+  const positionedTables = useMemo(() => {
+    const gap = 18;
+    const startX = 24;
+    const startY = 24;
+    const fallbackColumns = 4;
+
+    return filtered.map((table, index) => {
+      const width = table.width ?? 140;
+      const height = table.height ?? 110;
+      const fallbackColumn = index % fallbackColumns;
+      const fallbackRow = Math.floor(index / fallbackColumns);
+      const x = table.x ?? startX + fallbackColumn * (width + gap);
+      const y = table.y ?? startY + fallbackRow * (height + gap);
+
+      return {
+        table,
+        x,
+        y,
+        width,
+        height,
+      };
+    });
+  }, [filtered]);
+
+  const canvasSize = useMemo(() => {
+    const fallbackWidth = positionedTables.reduce((max, item) => Math.max(max, item.x + item.width + 24), 720);
+    const fallbackHeight = positionedTables.reduce((max, item) => Math.max(max, item.y + item.height + 24), 420);
+
+    return {
+      width: Math.max(selectedFloor?.width ?? 0, fallbackWidth),
+      height: Math.max(selectedFloor?.height ?? 0, fallbackHeight),
+    };
+  }, [positionedTables, selectedFloor]);
+
   const FILTERS: StatusFilter[] = ['All', 'Available', 'Occupied', 'Needs Attention', 'Unpaid'];
 
   return (
     <div style={{ padding: '28px 32px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-ui)', fontSize: 22, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: '-0.04em' }}>
@@ -297,6 +407,19 @@ export default function FloorPlanScreen() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {floorOptions.map((floor) => (
+          <button
+            key={floor.id}
+            className={`btn ${selectedFloorId === floor.id ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ fontSize: 12 }}
+            onClick={() => setSelectedFloorId(floor.id)}
+          >
+            <Layers3 size={12} /> {floor.label}
+          </button>
+        ))}
+      </div>
+
       {loading && (
         <div className="modal-overlay" style={{ background: 'rgba(248,246,242,0.5)' }}>
           <div style={{ color: 'var(--accent)', fontSize: 14, fontWeight: 500 }}>Opening order…</div>
@@ -328,26 +451,50 @@ export default function FloorPlanScreen() {
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {tables.filter((table) => table.isActive).length === 0 ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
           <Plus size={32} style={{ marginBottom: 10, opacity: 0.3 }} />
           <p>No tables found. Add tables in Settings.</p>
         </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}>
+          No tables match this floor and filter.
+        </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-          gap: 14, 
-          overflowY: 'auto', 
-          flex: 1,
-          alignContent: 'start', // Prevent rows from stretching to fill the flex container
-        }}>
-          {filtered.map((table) => (
-            <TableCard key={table.id} table={table} onClick={() => handleTableClick(table)} readonly={isCashier}
-              onTransfer={!isCashier && table.status === 'Occupied' ? () => setTransferFrom(table) : undefined}
-              onFree={!isCashier && table.status !== 'Available' ? () => handleFreeTable(table) : undefined}
-              freeing={freeingTableId === table.id} />
-          ))}
+        <div style={{ flex: 1, overflow: 'auto', paddingBottom: 12 }}>
+          <div
+            className="card"
+            style={{
+              position: 'relative',
+              width: canvasSize.width,
+              height: canvasSize.height,
+              minHeight: 320,
+              background: 'linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%)',
+              overflow: 'hidden',
+            }}
+          >
+            {positionedTables.map(({ table, x, y, width, height }) => (
+              <div
+                key={table.id}
+                style={{
+                  position: 'absolute',
+                  left: x,
+                  top: y,
+                  width,
+                  height,
+                }}
+              >
+                <TableCard
+                  table={table}
+                  onClick={() => handleTableClick(table)}
+                  readonly={isCashier}
+                  onTransfer={!isCashier && table.status === 'Occupied' ? () => setTransferFrom(table) : undefined}
+                  onFree={!isCashier && table.status !== 'Available' ? () => handleFreeTable(table) : undefined}
+                  freeing={freeingTableId === table.id}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

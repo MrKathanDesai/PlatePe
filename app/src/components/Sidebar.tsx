@@ -1,4 +1,4 @@
-import { LayoutDashboard, MapPin, ShoppingCart, ChefHat, BarChart2, Settings, LogOut, CreditCard, Coffee, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, MapPin, ShoppingCart, ChefHat, BarChart2, Settings, LogOut, CreditCard, Coffee, Sun, Moon, CalendarDays } from 'lucide-react';
 import { useApp } from '../store/app-store-context';
 import { ROLE_SCREENS } from '../store/roleConfig';
 import type { Screen, UserRole } from '../types';
@@ -17,6 +17,7 @@ interface NavItem { label: string; icon: React.ReactNode; screen: Screen }
 const ALL_NAV: NavItem[] = [
   { label: 'Dashboard',   icon: <LayoutDashboard size={15} />, screen: 'Dashboard' },
   { label: 'Floor Plan',  icon: <MapPin size={15} />,          screen: 'FloorPlan' },
+  { label: 'Reservations', icon: <CalendarDays size={15} />,   screen: 'Reservations' },
   { label: 'Order',       icon: <ShoppingCart size={15} />,    screen: 'Order' },
   { label: 'Pay Queue',   icon: <CreditCard size={15} />,      screen: 'CashierQueue' },
   { label: 'Kitchen KDS', icon: <ChefHat size={15} />,         screen: 'KDS' },

@@ -62,6 +62,18 @@ export const customerApi = {
       { method: 'POST', body: JSON.stringify({ idToken, name }) },
     ),
 
+  sendEmailOtp: (email: string, name?: string) =>
+    request<{ success: boolean; email: string; expiresInSeconds: number; resendAfterSeconds: number }>(
+      '/customer/auth/email/send-otp',
+      { method: 'POST', body: JSON.stringify({ email, name }) },
+    ),
+
+  verifyEmailOtp: (email: string, code: string, name?: string) =>
+    request<{ token: string; customer: { id: string; phone: string | null; email: string | null; name: string | null } }>(
+      '/customer/auth/email/verify-otp',
+      { method: 'POST', body: JSON.stringify({ email, code, name }) },
+    ),
+
   getMenu: () => request<MenuCategory[]>('/customer/menu'),
 
   getTableSession: (tableId: string) =>
@@ -103,8 +115,9 @@ export const customerApi = {
       orderId: string;
       orderNumber: string;
       orderStatus: string;
-      paymentId: string;
+      paymentId: string | null;
       paymentMethod: CustomerPaymentMethod;
+      paymentRequestStatus?: 'REQUESTED' | 'CONFIRMED';
     }>('/customer/payments', {
       method: 'POST',
       body: JSON.stringify(data),

@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { Order, OrderStatus } from './entities/order.entity';
@@ -20,6 +21,7 @@ import { KDSTicket } from '../kds/entities/kds-ticket.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { InventoryService } from '../inventory/inventory.service';
 import { KDSGateway } from '../kds/kds.gateway';
+import { OrderToken } from '../order-tokens/entities/order-token.entity';
 
 @Injectable()
 export class OrdersService {
@@ -31,6 +33,7 @@ export class OrdersService {
     @InjectRepository(Table) private tableRepo: Repository<Table>,
     @InjectRepository(AuditLog) private auditRepo: Repository<AuditLog>,
     @InjectRepository(KDSTicket) private kdsRepo: Repository<KDSTicket>,
+    @InjectRepository(OrderToken) private orderTokenRepo: Repository<OrderToken>,
     private inventoryService: InventoryService,
     private kdsGateway: KDSGateway,
     private dataSource: DataSource,
@@ -39,6 +42,10 @@ export class OrdersService {
   private generateOrderNumber(): string {
     const ts = Date.now().toString(36).toUpperCase();
     return `ORD-${ts}`;
+  }
+
+  private generateTokenPublicCode() {
+    return randomBytes(5).toString('hex').toUpperCase();
   }
 
   private calcTotals(items: OrderLineItem[], discount = 0, tip = 0) {
@@ -83,11 +90,34 @@ export class OrdersService {
 
       // Mark table as Occupied if applicable
       if (dto.tableId) {
-        await manager.update(Table, dto.tableId, {
-          status: 'Occupied',
-          occupiedSince: new Date(),
-          currentOrderId: order.id,
+      await manager.update(Table, dto.tableId, {
+        status: 'Occupied',
+        occupiedSince: new Date(),
+        currentOrderId: order.id,
+        attentionType: null,
+        attentionRequestedAt: null,
+      });
+      }
+
+      if ((dto.source ?? 'POS') === 'TOKEN') {
+        const tokenRepo = manager.getRepository(OrderToken);
+        const latestToken = await tokenRepo.findOne({
+          where: { sessionId: order.sessionId },
+          order: { displayNumber: 'DESC' },
         });
+
+        let publicCode = this.generateTokenPublicCode();
+        while (await tokenRepo.findOne({ where: { publicCode } })) {
+          publicCode = this.generateTokenPublicCode();
+        }
+
+        await tokenRepo.save(tokenRepo.create({
+          orderId: order.id,
+          sessionId: order.sessionId,
+          displayNumber: (latestToken?.displayNumber ?? 0) + 1,
+          publicCode,
+          status: 'ISSUED',
+        }));
       }
 
       const result = await manager.findOne(Order, {
@@ -249,6 +279,7 @@ export class OrdersService {
         status: 'Occupied',
         occupiedSince: table?.occupiedSince ?? new Date(),
         currentOrderId: order.id,
+        currentBill: Number(order.total),
       });
     }
 
@@ -278,6 +309,9 @@ export class OrdersService {
         status: 'Occupied',
         occupiedSince: table?.occupiedSince ?? new Date(),
         currentOrderId: order.id,
+        currentBill: Number(order.total),
+        attentionType: null,
+        attentionRequestedAt: null,
       });
       return;
     }
@@ -287,6 +321,8 @@ export class OrdersService {
       occupiedSince: null,
       currentOrderId: null,
       currentBill: null,
+      attentionType: null,
+      attentionRequestedAt: null,
     } as any);
   }
 

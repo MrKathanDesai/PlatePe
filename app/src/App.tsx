@@ -2,6 +2,7 @@ import { useApp } from './store/app-store-context';
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import FloorPlanScreen from './screens/FloorPlanScreen';
+import ReservationsScreen from './screens/ReservationsScreen';
 import OrderScreen from './screens/OrderScreen';
 import PaymentScreen from './screens/PaymentScreen';
 import KDSScreen from './screens/KDSScreen';
@@ -22,6 +23,7 @@ function AppShell() {
     switch (screen) {
       case 'Dashboard':    return <DashboardScreen />;
       case 'FloorPlan':    return <FloorPlanScreen />;
+      case 'Reservations': return <ReservationsScreen />;
       case 'Order':        return <OrderScreen />;
       case 'Payment':      return <PaymentScreen />;
       case 'KDS':          return <KDSScreen />;

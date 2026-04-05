@@ -4,12 +4,17 @@ import {
   BadRequestException,
   UnauthorizedException,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, QueryFailedError } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
 import { Customer } from './entities/customer.entity';
+import { CustomerOtp } from './entities/customer-otp.entity';
 import { FirebaseService } from './firebase.service';
+import { CustomerMailService } from './customer-mail.service';
 import { Product } from '../products/entities/product.entity';
 import { Category } from '../products/entities/category.entity';
 import { Table } from '../tables/entities/table.entity';
@@ -27,6 +32,7 @@ export class CustomerService {
 
   constructor(
     @InjectRepository(Customer) private customerRepo: Repository<Customer>,
+    @InjectRepository(CustomerOtp) private customerOtpRepo: Repository<CustomerOtp>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(Category) private categoryRepo: Repository<Category>,
     @InjectRepository(Table) private tableRepo: Repository<Table>,
@@ -38,6 +44,7 @@ export class CustomerService {
     private paymentsService: PaymentsService,
     private ordersService: OrdersService,
     private firebaseService: FirebaseService,
+    private customerMailService: CustomerMailService,
   ) {}
 
   /** Verify a Firebase ID token (phone or email) → return a customer JWT */
@@ -59,41 +66,86 @@ export class CustomerService {
       throw new UnauthorizedException('Token contains neither email nor phone number');
     }
 
-    const where = email ? { email } : { phone: phone! };
+    return this.findOrCreateCustomerAndIssueToken({ email, phone, name });
+  }
 
-    // Look up by whichever identifier we have
-    let customer = await this.customerRepo.findOne({ where });
+  async sendEmailOtp(emailInput: string, name?: string) {
+    const email = this.normalizeEmail(emailInput);
 
-    if (!customer) {
-      try {
-        customer = await this.customerRepo.save(
-          this.customerRepo.create({ phone, email, name: name ?? null }),
-        );
-      } catch (e: any) {
-        const isUniqueViolation =
-          e instanceof QueryFailedError
-          && e.driverError?.code === '23505';
+    if (!email) {
+      throw new BadRequestException('Enter a valid email address');
+    }
 
-        if (!isUniqueViolation) throw e;
+    const latestOtp = await this.customerOtpRepo.findOne({
+      where: { email, channel: 'EMAIL', used: false },
+      order: { createdAt: 'DESC' },
+    });
 
-        // Email-link sign-in can be fired twice in quick succession in dev,
-        // so fall back to the row that just won the race.
-        customer = await this.customerRepo.findOne({ where });
-        if (!customer) throw e;
+    if (latestOtp && Date.now() - latestOtp.createdAt.getTime() < 60_000) {
+      throw new HttpException('Please wait a minute before requesting another code', HttpStatus.TOO_MANY_REQUESTS);
+    }
+
+    await this.customerOtpRepo.update({ email, channel: 'EMAIL', used: false }, { used: true });
+
+    const otpCode = this.generateOtpCode();
+    const otpHash = await bcrypt.hash(otpCode, 10);
+    const expiresAt = new Date(Date.now() + 10 * 60_000);
+
+    await this.customerOtpRepo.save(this.customerOtpRepo.create({
+      email,
+      phone: null,
+      channel: 'EMAIL',
+      code: otpHash,
+      expiresAt,
+      used: false,
+      attempts: 0,
+    }));
+
+    await this.customerMailService.sendCustomerOtpEmail({ email, otp: otpCode, name });
+    return {
+      success: true,
+      email,
+      expiresInSeconds: 600,
+      resendAfterSeconds: 60,
+    };
+  }
+
+  async verifyEmailOtp(emailInput: string, codeInput: string, name?: string) {
+    const email = this.normalizeEmail(emailInput);
+    const code = codeInput.trim();
+
+    if (!email || !/^\d{6}$/.test(code)) {
+      throw new BadRequestException('Enter a valid email and 6-digit code');
+    }
+
+    const otp = await this.customerOtpRepo.findOne({
+      where: { email, channel: 'EMAIL', used: false },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otp) {
+      throw new UnauthorizedException('No active verification code found');
+    }
+
+    if (otp.expiresAt.getTime() < Date.now()) {
+      await this.customerOtpRepo.update(otp.id, { used: true });
+      throw new UnauthorizedException('Verification code has expired');
+    }
+
+    const nextAttempts = otp.attempts + 1;
+    await this.customerOtpRepo.update(otp.id, { attempts: nextAttempts });
+
+    const matches = await bcrypt.compare(code, otp.code);
+    if (!matches) {
+      if (nextAttempts >= 5) {
+        await this.customerOtpRepo.update(otp.id, { used: true });
+        throw new UnauthorizedException('Too many invalid attempts. Request a new code.');
       }
+      throw new UnauthorizedException('Incorrect verification code');
     }
 
-    if (name && !customer.name) {
-      await this.customerRepo.update(customer.id, { name });
-      customer.name = name;
-    }
-
-    const token = this.jwtService.sign(
-      { sub: customer.id, type: 'customer' },
-      { expiresIn: '24h' },
-    );
-
-    return { token, customer: { id: customer.id, phone: customer.phone, email: customer.email, name: customer.name } };
+    await this.customerOtpRepo.update(otp.id, { used: true });
+    return this.findOrCreateCustomerAndIssueToken({ email, phone: null, name });
   }
 
   /** Public menu — all active, non-86d products with their categories */
@@ -266,6 +318,23 @@ export class CustomerService {
     if (order.status === 'Paid') throw new BadRequestException('Order already paid');
     if (order.status === 'Voided') throw new BadRequestException('Order is voided');
 
+    if (method === 'CASH' || method === 'DIGITAL') {
+      const requestedOrder = await this.paymentsService.requestCustomerAssistedPayment({
+        orderId,
+        method,
+      });
+
+      return {
+        success: true,
+        orderId,
+        orderNumber: requestedOrder.orderNumber,
+        orderStatus: requestedOrder.status,
+        paymentId: null,
+        paymentMethod: method,
+        paymentRequestStatus: 'REQUESTED',
+      };
+    }
+
     const payment = await this.paymentsService.createAndConfirmCustomerPayment({
       orderId,
       method,
@@ -282,6 +351,7 @@ export class CustomerService {
       orderStatus: updatedOrder.status,
       paymentId: payment.id,
       paymentMethod: payment.method,
+      paymentRequestStatus: 'CONFIRMED',
     };
   }
 
@@ -292,5 +362,65 @@ export class CustomerService {
     const tax = subtotal * 0.05;
     const total = subtotal + tax;
     await this.orderRepo.update(orderId, { subtotal, tax, total });
+  }
+
+  private normalizeEmail(email: string | null | undefined) {
+    const normalized = email?.trim().toLowerCase() ?? '';
+    return normalized || null;
+  }
+
+  private generateOtpCode() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  private async findOrCreateCustomerAndIssueToken(input: {
+    email: string | null;
+    phone: string | null;
+    name?: string;
+  }) {
+    const where = input.email ? { email: input.email } : { phone: input.phone! };
+
+    let customer = await this.customerRepo.findOne({ where });
+
+    if (!customer) {
+      try {
+        customer = await this.customerRepo.save(
+          this.customerRepo.create({
+            phone: input.phone,
+            email: input.email,
+            name: input.name ?? null,
+          }),
+        );
+      } catch (e: any) {
+        const isUniqueViolation =
+          e instanceof QueryFailedError
+          && e.driverError?.code === '23505';
+
+        if (!isUniqueViolation) throw e;
+
+        customer = await this.customerRepo.findOne({ where });
+        if (!customer) throw e;
+      }
+    }
+
+    if (input.name && !customer.name) {
+      await this.customerRepo.update(customer.id, { name: input.name });
+      customer.name = input.name;
+    }
+
+    const token = this.jwtService.sign(
+      { sub: customer.id, type: 'customer' },
+      { expiresIn: '24h' },
+    );
+
+    return {
+      token,
+      customer: {
+        id: customer.id,
+        phone: customer.phone,
+        email: customer.email,
+        name: customer.name,
+      },
+    };
   }
 }
