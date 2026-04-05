@@ -4,15 +4,15 @@ import { In, Repository } from 'typeorm';
 import { Table, TableStatus } from './entities/table.entity';
 import { CreateTableDto } from './dto/create-table.dto';
 import { Order } from '../orders/entities/order.entity';
-
-const SUPPORTED_TABLE_NUMBERS = Array.from({ length: 10 }, (_, index) => `T${index + 1}`);
+import { UpdateTableDto } from './dto/update-table.dto';
+import { Floor } from '../floors/entities/floor.entity';
 
 function normalizeTableNumber(number: string) {
   return number.trim().toUpperCase().replace(/\s+/g, '');
 }
 
 function getTableNumberRank(number: string) {
-  const match = /^T([1-9]|10)$/.exec(number);
+  const match = /^T?(\d+)$/.exec(number);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
@@ -21,13 +21,39 @@ export class TablesService {
   constructor(
     @InjectRepository(Table) private tableRepo: Repository<Table>,
     @InjectRepository(Order) private orderRepo: Repository<Order>,
+    @InjectRepository(Floor) private floorRepo: Repository<Floor>,
   ) {}
+
+  private sortTables(tables: Table[]) {
+    return tables.sort((left, right) => {
+      const leftRank = getTableNumberRank(left.number);
+      const rightRank = getTableNumberRank(right.number);
+
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return left.number.localeCompare(right.number, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }
+
+  private normalizeOptionalString(value?: string | null) {
+    return value?.trim() || null;
+  }
+
+  private async validateFloorId(floorId?: string | null) {
+    const normalized = this.normalizeOptionalString(floorId);
+    if (!normalized) return null;
+
+    const floor = await this.floorRepo.findOne({
+      where: { id: normalized, isActive: true },
+    });
+    if (!floor) throw new BadRequestException('Floor not found');
+    return floor.id;
+  }
 
   async create(dto: CreateTableDto) {
     const number = normalizeTableNumber(dto.number);
-    if (!SUPPORTED_TABLE_NUMBERS.includes(number)) {
-      throw new BadRequestException('Table number must be between T1 and T10');
-    }
+    if (!number) throw new BadRequestException('Table number is required');
+
+    const floorId = await this.validateFloorId(dto.floorId);
 
     const existing = await this.tableRepo.findOne({ where: { number } });
     if (existing?.isActive) {
@@ -38,7 +64,13 @@ export class TablesService {
       existing.isActive = true;
       existing.number = number;
       existing.seats = dto.seats ?? existing.seats ?? 4;
-      existing.floorId = dto.floorId?.trim() || null;
+      existing.floorId = floorId;
+      existing.x = dto.x ?? existing.x ?? null;
+      existing.y = dto.y ?? existing.y ?? null;
+      existing.width = dto.width ?? existing.width ?? 140;
+      existing.height = dto.height ?? existing.height ?? 110;
+      existing.shape = dto.shape ?? existing.shape ?? 'rectangle';
+      existing.rotation = dto.rotation ?? existing.rotation ?? 0;
       existing.status = 'Available';
       existing.currentBill = null;
       existing.currentOrderId = null;
@@ -50,7 +82,13 @@ export class TablesService {
       seats: 4,
       ...dto,
       number,
-      floorId: dto.floorId?.trim() || null,
+      floorId,
+      x: dto.x ?? null,
+      y: dto.y ?? null,
+      width: dto.width ?? 140,
+      height: dto.height ?? 110,
+      shape: dto.shape ?? 'rectangle',
+      rotation: dto.rotation ?? 0,
     });
     return this.tableRepo.save(table);
   }
@@ -59,17 +97,45 @@ export class TablesService {
     const tables = await this.tableRepo.find({
       where: {
         isActive: true,
-        number: In(SUPPORTED_TABLE_NUMBERS),
       },
+      relations: ['floor'],
     });
 
-    return tables.sort((left, right) => getTableNumberRank(left.number) - getTableNumberRank(right.number));
+    return this.sortTables(tables);
   }
 
   async findOne(id: string) {
-    const table = await this.tableRepo.findOne({ where: { id } });
+    const table = await this.tableRepo.findOne({ where: { id }, relations: ['floor'] });
     if (!table) throw new NotFoundException('Table not found');
     return table;
+  }
+
+  async update(id: string, dto: UpdateTableDto) {
+    const table = await this.tableRepo.findOne({ where: { id } });
+    if (!table) throw new NotFoundException('Table not found');
+
+    if (dto.number !== undefined) {
+      const number = normalizeTableNumber(dto.number);
+      if (!number) throw new BadRequestException('Table number is required');
+
+      const existing = await this.tableRepo.findOne({ where: { number } });
+      if (existing && existing.id !== id && existing.isActive) {
+        throw new BadRequestException(`Table ${number} already exists`);
+      }
+
+      table.number = number;
+    }
+
+    if (dto.seats !== undefined) table.seats = dto.seats;
+    if (dto.floorId !== undefined) table.floorId = await this.validateFloorId(dto.floorId);
+    if (dto.x !== undefined) table.x = dto.x;
+    if (dto.y !== undefined) table.y = dto.y;
+    if (dto.width !== undefined) table.width = dto.width;
+    if (dto.height !== undefined) table.height = dto.height;
+    if (dto.shape !== undefined) table.shape = this.normalizeOptionalString(dto.shape);
+    if (dto.rotation !== undefined) table.rotation = dto.rotation;
+
+    return this.tableRepo.save(table);
   }
 
   async updateStatus(id: string, status: TableStatus, currentOrderId?: string, currentBill?: number) {

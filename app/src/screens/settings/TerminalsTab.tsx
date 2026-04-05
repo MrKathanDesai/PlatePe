@@ -4,6 +4,24 @@ import { sessionsApi } from '../../api/sessions';
 import { useApp } from '../../store/app-store-context';
 import type { Terminal } from '../../types';
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatCurrency(value: number | null | undefined) {
+  if (value == null) return '—';
+  return `₹${Number(value).toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export default function TerminalsTab() {
   const { showToast } = useApp();
   const [terminals, setTerminals] = useState<Terminal[]>([]);
@@ -38,7 +56,7 @@ export default function TerminalsTab() {
   if (loading) return <div style={{ color: 'var(--text-3)', padding: 16 }}>Loading…</div>;
 
   return (
-    <div style={{ maxWidth: 600 }}>
+    <div style={{ maxWidth: '100%' }}>
       <div className="card" style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', margin: '0 0 16px' }}>
           Add Terminal
@@ -68,30 +86,76 @@ export default function TerminalsTab() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
         <table className="data-table">
-          <thead><tr><th>Terminal</th><th>Location</th><th>Status</th></tr></thead>
+          <thead><tr><th>Terminal</th><th>Location</th><th>Status</th><th>Last Open Session</th><th>Last Close</th></tr></thead>
           <tbody>
             {terminals.map((t) => (
               <tr key={t.id}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Monitor size={14} color="var(--text-3)" />
-                    <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ color: 'var(--text-3)', fontSize: 11 }}>
+                        Added {formatDateTime(t.createdAt)}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td style={{ color: 'var(--text-3)', fontSize: 12 }}>{t.location ?? '—'}</td>
                 <td>
-                  <span className={`badge ${t.isLocked ? 'badge-amber' : 'badge-green'}`}>
-                    {t.isLocked
-                      ? `In Use${t.lockedByUserName ? ` · ${t.lockedByUserName}` : ''}`
-                      : 'Available'}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span className={`badge ${t.isLocked ? 'badge-amber' : 'badge-green'}`}>
+                      {t.isLocked
+                        ? `In Use${t.lockedByUserName ? ` · ${t.lockedByUserName}` : ''}`
+                        : 'Available'}
+                    </span>
+                    {t.activeSession && (
+                      <div style={{ color: 'var(--text-3)', fontSize: 11 }}>
+                        Opened {formatDateTime(t.activeSession.openedAt)}
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td>
+                  {t.lastOpenedSession ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text)' }}>
+                        {t.lastOpenedSession.userName ?? 'Unknown user'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        {formatDateTime(t.lastOpenedSession.openedAt)}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        Float {formatCurrency(t.lastOpenedSession.openingBalance)}
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-3)', fontSize: 12 }}>No sessions yet</span>
+                  )}
+                </td>
+                <td>
+                  {t.lastClosedSession ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                        {formatCurrency(t.lastClosedSession.salesTotal)}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        {t.lastClosedSession.orderCount} paid {t.lastClosedSession.orderCount === 1 ? 'order' : 'orders'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                        Closed {formatDateTime(t.lastClosedSession.closedAt)}
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-3)', fontSize: 12 }}>No close yet</span>
+                  )}
                 </td>
               </tr>
             ))}
             {terminals.length === 0 && (
-              <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 32 }}>
+              <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-3)', padding: 32 }}>
                 No terminals yet. Add one above to open sessions.
               </td></tr>
             )}

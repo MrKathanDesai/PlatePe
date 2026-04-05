@@ -4,7 +4,10 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { Floor } from '../../floors/entities/floor.entity';
 
 export type TableStatus =
   | 'Available'
@@ -24,8 +27,30 @@ export class Table {
   @Column({ default: 4 })
   seats: number;
 
+  @ManyToOne(() => Floor, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'floorId' })
+  floor: Floor | null;
+
   @Column({ type: 'varchar', nullable: true })
   floorId: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  x: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  y: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  width: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  height: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  shape: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  rotation: number;
 
   @Column({ type: 'varchar', default: 'Available' })
   status: TableStatus;

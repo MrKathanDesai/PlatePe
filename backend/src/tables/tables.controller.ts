@@ -11,6 +11,7 @@ import {
 import { Type } from 'class-transformer';
 import { TablesService } from './tables.service';
 import { CreateTableDto } from './dto/create-table.dto';
+import { UpdateTableDto } from './dto/update-table.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -56,6 +57,13 @@ export class TablesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   findOne(@Param('id') id: string) {
     return this.tablesService.findOne(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin', 'Manager')
+  update(@Param('id') id: string, @Body() dto: UpdateTableDto) {
+    return this.tablesService.update(id, dto);
   }
 
   @Patch(':id/status')

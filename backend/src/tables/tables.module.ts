@@ -4,9 +4,10 @@ import { TablesController } from './tables.controller';
 import { TablesService } from './tables.service';
 import { Table } from './entities/table.entity';
 import { Order } from '../orders/entities/order.entity';
+import { Floor } from '../floors/entities/floor.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Table, Order])],
+  imports: [TypeOrmModule.forFeature([Table, Order, Floor])],
   controllers: [TablesController],
   providers: [TablesService],
   exports: [TablesService],

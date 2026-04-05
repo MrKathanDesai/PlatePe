@@ -17,6 +17,7 @@ import { DiscountsModule } from './discounts/discounts.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { AuditModule } from './audit/audit.module';
 import { CustomerModule } from './customer/customer.module';
+import { FloorsModule } from './floors/floors.module';
 
 // Entities
 import { User } from './auth/entities/user.entity';
@@ -37,6 +38,7 @@ import { ProductRecipeLine } from './inventory/entities/product-recipe-line.enti
 import { RecipeModifierEffect } from './inventory/entities/recipe-modifier-effect.entity';
 import { InventoryTransaction } from './inventory/entities/inventory-transaction.entity';
 import { Customer } from './customer/entities/customer.entity';
+import { Floor } from './floors/entities/floor.entity';
 
 @Module({
   controllers: [AppController],
@@ -60,6 +62,7 @@ import { Customer } from './customer/entities/customer.entity';
           Category,
           Modifier,
           Product,
+          Floor,
           Table,
           Order,
           OrderLineItem,
@@ -90,6 +93,7 @@ import { Customer } from './customer/entities/customer.entity';
     ReportingModule,
     AuditModule,
     CustomerModule,
+    FloorsModule,
     TypeOrmModule.forFeature([User, Category]),
   ],
   providers: [AppService, SeederService],

@@ -18,7 +18,27 @@ export interface Terminal {
   isLocked: boolean;
   lockedByUserId: string | null;
   lockedByUserName?: string | null;
+  activeSession?: TerminalSessionSnapshot | null;
+  lastOpenedSession?: TerminalSessionSnapshot | null;
+  lastClosedSession?: TerminalClosedSessionSnapshot | null;
   createdAt: string;
+}
+
+export interface TerminalSessionSnapshot {
+  id: string;
+  userId: string;
+  userName: string | null;
+  status: 'ACTIVE' | 'CLOSED';
+  openedAt: string;
+  openingBalance: number;
+}
+
+export interface TerminalClosedSessionSnapshot extends TerminalSessionSnapshot {
+  closedAt: string | null;
+  closingBalance: number | null;
+  discrepancy: number | null;
+  salesTotal: number;
+  orderCount: number;
 }
 
 export interface Session {
@@ -34,6 +54,17 @@ export interface Session {
   endTime: string | null;
 }
 
+export interface Floor {
+  id: string;
+  name: string;
+  sortOrder: number;
+  width: number;
+  height: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Tables ───────────────────────────────────────────────────────────────────
 export type TableStatus = 'Available' | 'Occupied' | 'Reserved' | 'Needs Attention' | 'Unpaid';
 
@@ -42,6 +73,13 @@ export interface Table {
   number: string;
   seats: number;
   floorId: string | null;
+  floor?: Floor | null;
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+  shape: string | null;
+  rotation: number;
   status: TableStatus;
   currentBill: number | null;
   occupiedSince: string | null;

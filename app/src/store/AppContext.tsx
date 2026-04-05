@@ -1,8 +1,9 @@
 import { useEffect, useReducer, useCallback, type ReactNode } from 'react';
-import type { User, Session, Order, Table, Product, Category, Screen, UserRole } from '../types';
+import type { User, Session, Order, Table, Product, Category, Floor, Screen, UserRole } from '../types';
 import { sessionsApi } from '../api/sessions';
 import { productsApi } from '../api/products';
 import { tablesApi } from '../api/tables';
+import { floorsApi } from '../api/floors';
 import { AppContext } from './app-store-context';
 import { ROLE_HOME } from './roleConfig';
 
@@ -13,6 +14,7 @@ interface AppState {
   activeOrder: Order | null;
   activeTableId: string | null;
   tables: Table[];
+  floors: Floor[];
   products: Product[];
   categories: Category[];
   screen: Screen;
@@ -27,6 +29,7 @@ type Action =
   | { type: 'SET_ACTIVE_ORDER'; payload: Order | null }
   | { type: 'SET_ACTIVE_TABLE'; payload: string | null }
   | { type: 'SET_TABLES'; payload: Table[] }
+  | { type: 'SET_FLOORS'; payload: Floor[] }
   | { type: 'SET_PRODUCTS'; payload: Product[] }
   | { type: 'SET_CATEGORIES'; payload: Category[] }
   | { type: 'NAVIGATE'; payload: { screen: Screen; params?: Record<string, unknown> } }
@@ -38,7 +41,7 @@ const savedTheme = (localStorage.getItem('theme') as 'light' | 'dark') ?? 'light
 
 const initialState: AppState = {
   user: null, session: null, activeOrder: null, activeTableId: null,
-  tables: [], products: [], categories: [],
+  tables: [], floors: [], products: [], categories: [],
   screen: 'Login', screenParams: {}, toast: null,
   theme: savedTheme,
 };
@@ -50,6 +53,7 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_ACTIVE_ORDER': return { ...state, activeOrder: action.payload };
     case 'SET_ACTIVE_TABLE': return { ...state, activeTableId: action.payload };
     case 'SET_TABLES':       return { ...state, tables: action.payload };
+    case 'SET_FLOORS':       return { ...state, floors: action.payload };
     case 'SET_PRODUCTS':     return { ...state, products: action.payload };
     case 'SET_CATEGORIES':   return { ...state, categories: action.payload };
     case 'NAVIGATE':         return { ...state, screen: action.payload.screen, screenParams: action.payload.params ?? {} };
@@ -86,12 +90,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const loadInitialData = useCallback(async () => {
     try {
-      const [tablesRes, productsRes, categoriesRes] = await Promise.all([
+      const [tablesRes, floorsRes, productsRes, categoriesRes] = await Promise.all([
         tablesApi.getAll(),
+        floorsApi.getAll(),
         productsApi.getAll(),
         productsApi.getCategories(),
       ]);
       dispatch({ type: 'SET_TABLES', payload: tablesRes.data });
+      dispatch({ type: 'SET_FLOORS', payload: floorsRes.data });
       dispatch({ type: 'SET_PRODUCTS', payload: productsRes.data });
       dispatch({ type: 'SET_CATEGORIES', payload: categoriesRes.data });
     } catch { /* silent */ }
@@ -168,6 +174,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_TABLES', payload: r.data });
   }, []);
 
+  const refreshFloors   = useCallback(async () => {
+    const r = await floorsApi.getAll();
+    dispatch({ type: 'SET_FLOORS', payload: r.data });
+  }, []);
+
   const refreshProducts = useCallback(async () => {
     const [p, c] = await Promise.all([productsApi.getAll(), productsApi.getCategories()]);
     dispatch({ type: 'SET_PRODUCTS',   payload: p.data });
@@ -182,7 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...state,
       login, logout, navigate,
       setSession, setActiveOrder, setActiveTable,
-      refreshTables, refreshProducts, showToast, toggleTheme,
+      refreshTables, refreshFloors, refreshProducts, showToast, toggleTheme,
     }}>
       {children}
     </AppContext.Provider>

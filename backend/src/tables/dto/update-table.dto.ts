@@ -1,9 +1,15 @@
-import { IsString, IsNumber, IsOptional, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
-export class CreateTableDto {
+export class UpdateTableDto {
+  @IsOptional()
   @IsString()
-  number: string;
+  number?: string;
 
   @IsOptional()
   @Type(() => Number)
@@ -13,33 +19,33 @@ export class CreateTableDto {
 
   @IsOptional()
   @IsString()
-  floorId?: string;
+  floorId?: string | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  x?: number;
+  x?: number | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  y?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(40)
-  width?: number;
+  y?: number | null;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(40)
-  height?: number;
+  width?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(40)
+  height?: number | null;
 
   @IsOptional()
   @IsString()
-  shape?: string;
+  shape?: string | null;
 
   @IsOptional()
   @Type(() => Number)

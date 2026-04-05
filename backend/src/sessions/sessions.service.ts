@@ -4,20 +4,74 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Session } from './entities/session.entity';
 import { Terminal } from './entities/terminal.entity';
 import { OpenSessionDto } from './dto/open-session.dto';
 import { CloseSessionDto } from './dto/close-session.dto';
 import { CreateTerminalDto } from './dto/create-terminal.dto';
 import { User } from '../auth/entities/user.entity';
+import { Order } from '../orders/entities/order.entity';
+
+type SessionSalesSummary = {
+  salesTotal: number;
+  orderCount: number;
+};
+
+type TerminalSessionSnapshot = {
+  id: string;
+  userId: string;
+  userName: string | null;
+  status: Session['status'];
+  openedAt: Date;
+  openingBalance: number;
+};
+
+type TerminalClosedSessionSnapshot = TerminalSessionSnapshot & {
+  closedAt: Date | null;
+  closingBalance: number | null;
+  discrepancy: number | null;
+  salesTotal: number;
+  orderCount: number;
+};
 
 @Injectable()
 export class SessionsService {
   constructor(
     @InjectRepository(Session) private sessionRepo: Repository<Session>,
     @InjectRepository(Terminal) private terminalRepo: Repository<Terminal>,
+    @InjectRepository(Order) private orderRepo: Repository<Order>,
   ) {}
+
+  private toNumber(value: unknown): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private buildSessionSnapshot(session: Session): TerminalSessionSnapshot {
+    return {
+      id: session.id,
+      userId: session.userId,
+      userName: session.user?.name ?? null,
+      status: session.status,
+      openedAt: session.startTime,
+      openingBalance: this.toNumber(session.openingBalance),
+    };
+  }
+
+  private buildClosedSessionSnapshot(
+    session: Session,
+    sales: SessionSalesSummary,
+  ): TerminalClosedSessionSnapshot {
+    return {
+      ...this.buildSessionSnapshot(session),
+      closedAt: session.endTime ?? null,
+      closingBalance: session.closingBalance != null ? this.toNumber(session.closingBalance) : null,
+      discrepancy: session.discrepancy != null ? this.toNumber(session.discrepancy) : null,
+      salesTotal: sales.salesTotal,
+      orderCount: sales.orderCount,
+    };
+  }
 
   private async findActiveSessionForTerminal(terminalId: string) {
     return this.sessionRepo.findOne({
@@ -70,7 +124,64 @@ export class SessionsService {
       order: { createdAt: 'ASC' },
     });
 
-    return Promise.all(terminals.map((terminal) => this.syncTerminalLock(terminal)));
+    if (terminals.length === 0) return [];
+
+    const terminalIds = terminals.map((terminal) => terminal.id);
+    const sessions = await this.sessionRepo.find({
+      where: { terminalId: In(terminalIds) },
+      relations: ['user'],
+      order: { startTime: 'DESC' },
+    });
+
+    const sessionIds = sessions.map((session) => session.id);
+    const salesBySessionId = new Map<string, SessionSalesSummary>();
+
+    if (sessionIds.length > 0) {
+      const salesRows = await this.orderRepo.createQueryBuilder('order')
+        .select('order.sessionId', 'sessionId')
+        .addSelect('COUNT(order.id)', 'orderCount')
+        .addSelect('COALESCE(SUM(order.total), 0)', 'salesTotal')
+        .where('order.sessionId IN (:...sessionIds)', { sessionIds })
+        .andWhere("order.status = 'Paid'")
+        .groupBy('order.sessionId')
+        .getRawMany();
+
+      for (const row of salesRows) {
+        salesBySessionId.set(String(row.sessionId), {
+          salesTotal: this.toNumber(row.salesTotal),
+          orderCount: this.toNumber(row.orderCount),
+        });
+      }
+    }
+
+    const sessionsByTerminalId = new Map<string, Session[]>();
+    for (const session of sessions) {
+      const existing = sessionsByTerminalId.get(session.terminalId);
+      if (existing) existing.push(session);
+      else sessionsByTerminalId.set(session.terminalId, [session]);
+    }
+
+    return Promise.all(terminals.map(async (terminal) => {
+      const synced = await this.syncTerminalLock(terminal);
+      const terminalSessions = sessionsByTerminalId.get(terminal.id) ?? [];
+      const lastOpenedSession = terminalSessions[0]
+        ? this.buildSessionSnapshot(terminalSessions[0])
+        : null;
+      const activeSession = terminalSessions.find((session) => session.status === 'ACTIVE');
+      const lastClosedSession = terminalSessions.find((session) => session.status === 'CLOSED');
+
+      return {
+        ...synced,
+        activeSession: activeSession ? this.buildSessionSnapshot(activeSession) : null,
+        lastOpenedSession,
+        lastClosedSession: lastClosedSession
+          ? this.buildClosedSessionSnapshot(
+            lastClosedSession,
+            salesBySessionId.get(lastClosedSession.id) ?? { salesTotal: 0, orderCount: 0 },
+          )
+          : null,
+      };
+    }));
   }
 
   async openSession(dto: OpenSessionDto, user: User): Promise<Session> {

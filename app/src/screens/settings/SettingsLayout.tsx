@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import ProductsTab from './ProductsTab';
+import FloorsTab from './FloorsTab';
 import TablesTab from './TablesTab';
 import StaffTab from './StaffTab';
 import DiscountsTab from './DiscountsTab';
 import InventoryTab from './InventoryTab';
 import TerminalsTab from './TerminalsTab';
 
-type SettingsTab = 'Products' | 'Tables' | 'Terminals' | 'Staff' | 'Discounts' | 'Inventory';
-const TABS: SettingsTab[] = ['Products', 'Tables', 'Terminals', 'Staff', 'Discounts', 'Inventory'];
+type SettingsTab = 'Products' | 'Floors' | 'Tables' | 'Terminals' | 'Staff' | 'Discounts' | 'Inventory';
+const TABS: SettingsTab[] = ['Products', 'Floors', 'Tables', 'Terminals', 'Staff', 'Discounts', 'Inventory'];
 
 export default function SettingsLayout() {
   const [tab, setTab] = useState<SettingsTab>('Products');
@@ -29,6 +30,7 @@ export default function SettingsLayout() {
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {tab === 'Products'   && <ProductsTab />}
+        {tab === 'Floors'     && <FloorsTab />}
         {tab === 'Tables'     && <TablesTab />}
         {tab === 'Terminals'  && <TerminalsTab />}
         {tab === 'Staff'      && <StaffTab />}

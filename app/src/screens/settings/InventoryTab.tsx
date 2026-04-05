@@ -6,8 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
-  Minus,
-  Plus,
   RefreshCw,
   Upload,
   X,

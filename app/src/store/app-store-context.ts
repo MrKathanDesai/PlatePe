@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { User, Session, Order, Table, Product, Category, Screen } from '../types';
+import type { User, Session, Order, Table, Product, Category, Floor, Screen } from '../types';
 
 export interface AppContextValue {
   user: User | null;
@@ -7,6 +7,7 @@ export interface AppContextValue {
   activeOrder: Order | null;
   activeTableId: string | null;
   tables: Table[];
+  floors: Floor[];
   products: Product[];
   categories: Category[];
   screen: Screen;
@@ -20,6 +21,7 @@ export interface AppContextValue {
   setActiveOrder: (order: Order | null) => void;
   setActiveTable: (tableId: string | null) => void;
   refreshTables: () => Promise<void>;
+  refreshFloors: () => Promise<void>;
   refreshProducts: () => Promise<void>;
   showToast: (message: string) => void;
   toggleTheme: () => void;
