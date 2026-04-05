@@ -5,6 +5,7 @@ import { useCustomer } from '../CustomerContext';
 import { getKDSSocket } from '../../api/kds';
 
 const STATUS_STEPS = ['Open', 'Sent', 'Ready', 'Paid'] as const;
+const AUTO_LOGOUT_MS = 2500;
 type CustomerDisplayStatus = typeof STATUS_STEPS[number];
 
 function stepIndex(status: CustomerDisplayStatus) {
@@ -49,7 +50,12 @@ export default function OrderStatusScreen() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId) {
+      setOrder(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       const o = await customerApi.getOrder(orderId);
       setOrder(o as any);
@@ -65,14 +71,21 @@ export default function OrderStatusScreen() {
     refresh();
   }, [refresh]);
 
+  const status = deriveDisplayStatus(order, orderStatus);
+  const step = stepIndex(status);
+  const isPaid = status === 'Paid';
+  const canSettleBill = status === 'Ready';
+  const billTotal = Number(order?.total ?? orderTotal ?? 0);
+
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId || isPaid) return;
     const socket = getKDSSocket();
 
     const handlePaid = (data: { orderId: string }) => {
       if (data.orderId !== orderId) return;
+      setOrder((prev) => (prev ? { ...prev, status: 'Paid' } : prev));
       setOrderStatus('Paid');
-      refresh();
+      setLoading(false);
     };
 
     const handleStage = (ticket: { orderId: string }) => {
@@ -92,13 +105,18 @@ export default function OrderStatusScreen() {
       socket.off('order:paid', handlePaid);
       socket.off('ticket:stage', handleStage);
     };
-  }, [orderId, refresh, setOrderStatus]);
+  }, [isPaid, orderId, refresh, setOrderStatus]);
 
-  const status = deriveDisplayStatus(order, orderStatus);
-  const step = stepIndex(status);
-  const isPaid = status === 'Paid';
-  const canSettleBill = status === 'Ready';
-  const billTotal = Number(order?.total ?? orderTotal ?? 0);
+  useEffect(() => {
+    if (!isPaid) return;
+    const timeoutId = window.setTimeout(() => {
+      logout();
+    }, AUTO_LOGOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isPaid, logout]);
 
   function handlePayNow() {
     setScreen('payment');
@@ -117,6 +135,21 @@ export default function OrderStatusScreen() {
       </div>
     </div>
   );
+
+  if (!orderId) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.centered}>
+          <div style={styles.paidIcon}>✓</div>
+          <h2 style={styles.statusHeading}>Session closed</h2>
+          <p style={styles.statusSub}>Your payment is complete. Returning to sign in…</p>
+          <button style={{ ...styles.payBtn, maxWidth: 280 }} onClick={logout}>
+            Return to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.page}>
@@ -138,7 +171,7 @@ export default function OrderStatusScreen() {
             <>
               <div style={styles.paidIcon}>✓</div>
               <h2 style={{ ...styles.statusHeading, color: '#276749' }}>Payment Confirmed!</h2>
-              <p style={styles.statusSub}>Thank you for dining with us. Enjoy your meal!</p>
+              <p style={styles.statusSub}>Thank you for dining with us. You will be logged out automatically in a moment.</p>
             </>
           ) : (
             <>
