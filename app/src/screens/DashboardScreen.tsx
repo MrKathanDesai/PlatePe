@@ -342,7 +342,7 @@ export default function DashboardScreen() {
                             </div>
                           </td>
                           <td style={{ color: 'var(--text-3)', fontSize: 12 }}>
-                            {order.tableId ? `T${tables.find((t) => t.id === order.tableId)?.number ?? '?'}` : 'Takeaway'}
+                            {order.tableId ? tables.find((t) => t.id === order.tableId)?.number ?? '?' : 'Takeaway'}
                           </td>
                           <td><span className={`badge ${getOrderBadge(order.status)}`}>{order.status}</span></td>
                           <td>
