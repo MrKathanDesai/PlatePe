@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Patch,
+  Delete,
   Param,
   Body,
   UseGuards,
@@ -47,5 +48,19 @@ export class AuthController {
   @Roles('Admin')
   reactivate(@Param('id') id: string) {
     return this.authService.reactivate(id);
+  }
+
+  @Patch('users/:id/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  updateRole(@Param('id') id: string, @Body('role') role: string) {
+    return this.authService.updateRole(id, role as any);
+  }
+
+  @Delete('users/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('Admin')
+  remove(@Param('id') id: string) {
+    return this.authService.remove(id);
   }
 }

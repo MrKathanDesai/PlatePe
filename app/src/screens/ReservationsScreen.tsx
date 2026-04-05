@@ -34,7 +34,7 @@ function formatDateTime(value: string) {
 function buildDefaultForm(): ReservationForm {
   const start = new Date();
   start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 20 * 60 * 1000);
 
   return {
     guestName: '',
@@ -187,7 +187,7 @@ export default function ReservationsScreen() {
               <input className="input" type="datetime-local" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>End</label>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 5, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Holding Table Until</label>
               <input className="input" type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
             </div>
           </div>
@@ -302,7 +302,7 @@ export default function ReservationsScreen() {
                     <div>
                       <div style={{ fontWeight: 700, color: 'var(--text)' }}>{reservation.guestName}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>
-                        {reservation.partySize} guests · {formatDateTime(reservation.startsAt)} to {formatDateTime(reservation.endsAt)}
+                        {reservation.partySize} guests · {formatDateTime(reservation.startsAt)} · holding until {formatDateTime(reservation.endsAt)}
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>
                         {(reservation.assignments ?? []).length > 0

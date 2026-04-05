@@ -351,11 +351,13 @@ export default function FloorPlanScreen() {
     try {
       await tablesApi.transfer(transferFrom.id, { toTableId: toTable.id, orderId: transferFrom.currentOrderId });
       await refreshTables();
+      setActiveTable(toTable.id);
       showToast(`Moved to Table ${toTable.number}`);
       setTransferFrom(null);
       setSelectedTableId(toTable.id);
-    } catch {
-      showToast('Transfer failed');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } } };
+      showToast(e?.response?.data?.message ?? 'Transfer failed');
     } finally {
       setTransferring(false);
     }
@@ -493,46 +495,94 @@ export default function FloorPlanScreen() {
         </div>
       )}
 
-      {transferFrom && (
-        <div className="modal-overlay">
-          <div className="card" style={{ width: 460, padding: 24, position: 'relative' }}>
-            <button
-              onClick={() => setTransferFrom(null)}
-              style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}
-            >
-              <X size={16} />
-            </button>
-            <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.03em' }}>
-              Transfer {transferFrom.number}
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 18px' }}>
-              Pick an available table to move this order.
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 10 }}>
-              {tables.filter((t) => t.isActive && t.status === 'Available' && t.id !== transferFrom.id).map((table) => (
-                <button
-                  key={table.id}
-                  onClick={() => handleTransfer(table)}
-                  disabled={transferring}
-                  style={{
-                    padding: '12px 8px',
-                    borderRadius: 12,
-                    border: '1.5px solid var(--green)',
-                    background: 'var(--green-bg)',
-                    cursor: 'pointer',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: 'var(--text)',
-                  }}
-                >
-                  {table.number}
-                </button>
-              ))}
+      {transferFrom && (() => {
+        const availableTables = tables.filter((t) => t.isActive && t.status === 'Available' && t.id !== transferFrom.id);
+        const floorGroups = floors.map((f) => ({
+          floor: f,
+          tables: availableTables.filter((t) => t.floorId === f.id),
+        })).filter((g) => g.tables.length > 0);
+        const unassignedTables = availableTables.filter((t) => !t.floorId);
+        return (
+          <div className="modal-overlay">
+            <div className="card" style={{ width: 480, padding: 24, position: 'relative', maxHeight: '80vh', overflowY: 'auto' }}>
+              <button
+                onClick={() => setTransferFrom(null)}
+                style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}
+              >
+                <X size={16} />
+              </button>
+              <h2 style={{ fontFamily: 'var(--font-ui)', fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px', letterSpacing: '-0.03em' }}>
+                Transfer Table {transferFrom.number}
+              </h2>
+              <p style={{ fontSize: 13, color: 'var(--text-3)', margin: '0 0 18px' }}>
+                Order #{transferFrom.currentOrderId?.slice(-6)} · pick an available table.
+              </p>
+              {availableTables.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--text-3)', textAlign: 'center', padding: '20px 0' }}>No available tables to transfer to.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {floorGroups.map(({ floor, tables: floorTables }) => (
+                    <div key={floor.id}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>{floor.name}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8 }}>
+                        {floorTables.map((table) => (
+                          <button
+                            key={table.id}
+                            onClick={() => void handleTransfer(table)}
+                            disabled={transferring}
+                            style={{
+                              padding: '12px 8px',
+                              borderRadius: 10,
+                              border: '1.5px solid var(--green)',
+                              background: 'var(--green-bg)',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 18,
+                              fontWeight: 700,
+                              color: 'var(--text)',
+                              opacity: transferring ? 0.6 : 1,
+                            }}
+                          >
+                            {table.number}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {unassignedTables.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Unassigned</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8 }}>
+                        {unassignedTables.map((table) => (
+                          <button
+                            key={table.id}
+                            onClick={() => void handleTransfer(table)}
+                            disabled={transferring}
+                            style={{
+                              padding: '12px 8px',
+                              borderRadius: 10,
+                              border: '1.5px solid var(--green)',
+                              background: 'var(--green-bg)',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 18,
+                              fontWeight: 700,
+                              color: 'var(--text)',
+                              opacity: transferring ? 0.6 : 1,
+                            }}
+                          >
+                            {table.number}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start', minHeight: 0, flex: 1 }}>
         <section style={{ flex: '1 1 760px', minWidth: 0 }}>
@@ -672,7 +722,7 @@ export default function FloorPlanScreen() {
                     {detailActionLabel(selectedTable, isCashier)}
                   </button>
 
-                  {!isCashier && selectedTable.status === 'Occupied' && (
+                  {!isCashier && !!selectedTable.currentOrderId && (
                     <button
                       className="btn btn-ghost"
                       onClick={() => setTransferFrom(selectedTable)}

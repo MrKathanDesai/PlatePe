@@ -5,9 +5,10 @@ import MenuScreen from './screens/MenuScreen';
 import OrderStatusScreen from './screens/OrderStatusScreen';
 import CustomerPaymentScreen from './screens/CustomerPaymentScreen';
 import { customerApi } from './api/customerApi';
+import { getCustomerSocket, disconnectCustomerSocket } from '../api/kds';
 
 function CustomerShell({ tableId }: { tableId: string | null }) {
-  const { screen, setTable, setScreen, token } = useCustomer();
+  const { screen, setTable, setScreen, token, orderId, logout } = useCustomer();
 
   // Fetch table info on mount
   useEffect(() => {
@@ -21,6 +22,32 @@ function CustomerShell({ tableId }: { tableId: string | null }) {
   useEffect(() => {
     if (token && screen === 'login') setScreen('menu');
   }, [token, screen, setScreen]);
+
+  // Global order:paid listener — auto-logout no matter which screen the customer is on
+  useEffect(() => {
+    if (!token || !orderId) return;
+
+    const socket = getCustomerSocket();
+
+    const handlePaid = (data: { orderId: string }) => {
+      if (data.orderId !== orderId) return;
+      // Small delay so the customer sees a brief confirmation if already on status screen
+      setTimeout(() => logout(), 2500);
+    };
+
+    socket.on('order:paid', handlePaid);
+
+    return () => {
+      socket.off('order:paid', handlePaid);
+    };
+  }, [token, orderId, logout]);
+
+  // Disconnect customer socket on unmount
+  useEffect(() => {
+    return () => {
+      disconnectCustomerSocket();
+    };
+  }, []);
 
   switch (screen) {
     case 'login':   return <OtpLoginScreen />;

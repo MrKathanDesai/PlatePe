@@ -43,3 +43,25 @@ export function disconnectKDSSocket() {
     socket = null;
   }
 }
+
+// ─── Customer socket (no staff auth) ─────────────────────────────────────────
+let customerSocket: Socket | null = null;
+
+export function getCustomerSocket(): Socket {
+  if (!customerSocket) {
+    const serverUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    customerSocket = io('/kds', {
+      path: '/socket.io',
+      transports: ['websocket'],
+      ...(import.meta.env.VITE_API_URL ? { host: serverUrl } : {}),
+    });
+  }
+  return customerSocket;
+}
+
+export function disconnectCustomerSocket() {
+  if (customerSocket) {
+    customerSocket.disconnect();
+    customerSocket = null;
+  }
+}

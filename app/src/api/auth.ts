@@ -16,4 +16,10 @@ export const authApi = {
 
   reactivate: (id: string) =>
     client.patch(`/auth/users/${id}/reactivate`),
+
+  updateRole: (id: string, role: string) =>
+    client.patch(`/auth/users/${id}/role`, { role }),
+
+  remove: (id: string) =>
+    client.delete(`/auth/users/${id}`),
 };

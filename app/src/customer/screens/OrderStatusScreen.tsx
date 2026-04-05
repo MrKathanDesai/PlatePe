@@ -5,7 +5,6 @@ import { useCustomer } from '../CustomerContext';
 import { getKDSSocket } from '../../api/kds';
 
 const STATUS_STEPS = ['Open', 'Sent', 'Ready', 'Paid'] as const;
-const AUTO_LOGOUT_MS = 2500;
 type CustomerDisplayStatus = typeof STATUS_STEPS[number];
 
 function stepIndex(status: CustomerDisplayStatus) {
@@ -37,7 +36,7 @@ function deriveDisplayStatus(
 }
 
 export default function OrderStatusScreen() {
-  const { orderId, orderNumber, orderStatus, orderTotal, setOrderStatus, setScreen, clearCart, logout, tableNumber } = useCustomer();
+  const { orderId, orderNumber, orderStatus, orderTotal, setOrderStatus, setScreen, clearCart, tableNumber, logout } = useCustomer();
   const [order, setOrder] = useState<{
     id: string;
     orderNumber: string;
@@ -86,6 +85,7 @@ export default function OrderStatusScreen() {
       setOrder((prev) => (prev ? { ...prev, status: 'Paid' } : prev));
       setOrderStatus('Paid');
       setLoading(false);
+      // Auto-logout is handled globally in CustomerShell; no duplicate timeout here
     };
 
     const handleStage = (ticket: { orderId: string }) => {
@@ -107,16 +107,7 @@ export default function OrderStatusScreen() {
     };
   }, [isPaid, orderId, refresh, setOrderStatus]);
 
-  useEffect(() => {
-    if (!isPaid) return;
-    const timeoutId = window.setTimeout(() => {
-      logout();
-    }, AUTO_LOGOUT_MS);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [isPaid, logout]);
+  // Auto-logout on payment is handled globally in CustomerShell via the order:paid WS event
 
   function handlePayNow() {
     setScreen('payment');
