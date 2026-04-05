@@ -2,6 +2,12 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
 
+function normalizeEnvValue(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.replace(/^['"]|['"]$/g, '');
+}
+
 @Injectable()
 export class CustomerMailService {
   private readonly logger = new Logger(CustomerMailService.name);
@@ -10,32 +16,37 @@ export class CustomerMailService {
   private readonly hasMailConfig: boolean;
 
   constructor(private readonly config: ConfigService) {
-    const user =
+    const user = normalizeEnvValue(
       this.config.get<string>('MAIL_USER')
       ?? this.config.get<string>('SMTP_USER')
       ?? this.config.get<string>('EMAIL_USER')
-      ?? this.config.get<string>('GMAIL_USER');
-    const rawPass =
+      ?? this.config.get<string>('GMAIL_USER'),
+    );
+    const rawPass = normalizeEnvValue(
       this.config.get<string>('MAIL_PASS')
       ?? this.config.get<string>('SMTP_PASS')
       ?? this.config.get<string>('EMAIL_PASS')
       ?? this.config.get<string>('GMAIL_APP_PASSWORD')
-      ?? this.config.get<string>('GMAIL_PASS');
+      ?? this.config.get<string>('GMAIL_PASS'),
+    );
     const pass = rawPass?.replace(/\s+/g, '');
     const inferredService = user?.toLowerCase().endsWith('@gmail.com') ? 'Gmail' : undefined;
-    const service =
+    const service = normalizeEnvValue(
       this.config.get<string>('MAIL_SERVICE')
       ?? this.config.get<string>('SMTP_SERVICE')
       ?? this.config.get<string>('EMAIL_SERVICE')
       ?? this.config.get<string>('GMAIL_SERVICE')
-      ?? inferredService;
-    const host = this.config.get<string>('MAIL_HOST') ?? this.config.get<string>('SMTP_HOST');
-    const portValue = this.config.get<string>('MAIL_PORT') ?? this.config.get<string>('SMTP_PORT');
-    const secureValue = this.config.get<string>('MAIL_SECURE') ?? this.config.get<string>('SMTP_SECURE');
+      ?? inferredService,
+    );
+    const host = normalizeEnvValue(this.config.get<string>('MAIL_HOST') ?? this.config.get<string>('SMTP_HOST'));
+    const portValue = normalizeEnvValue(this.config.get<string>('MAIL_PORT') ?? this.config.get<string>('SMTP_PORT'));
+    const secureValue = normalizeEnvValue(this.config.get<string>('MAIL_SECURE') ?? this.config.get<string>('SMTP_SECURE'));
     const from =
-      this.config.get<string>('MAIL_FROM')
-      ?? this.config.get<string>('SMTP_FROM')
-      ?? this.config.get<string>('EMAIL_FROM')
+      normalizeEnvValue(
+        this.config.get<string>('MAIL_FROM')
+        ?? this.config.get<string>('SMTP_FROM')
+        ?? this.config.get<string>('EMAIL_FROM'),
+      )
       ?? user
       ?? 'no-reply@platepe.local';
 
